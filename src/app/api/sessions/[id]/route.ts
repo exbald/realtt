@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { transcriptionSession, transcriptSegment } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
 
 type RouteContext = {
   params: Promise<{ id: string }>;

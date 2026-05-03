@@ -83,3 +83,46 @@
 - No mock libraries in dependencies
 
 **Current status:** 3/46 features passing
+
+---
+
+### Feature #3: Data persists across server restart - PASSED ✅
+
+**What was accomplished:**
+- Verified PostgreSQL is running on localhost:5432 with database `postgres_dev`
+- Confirmed all 3 app-specific tables exist with correct schema
+- Created session CRUD API endpoints using real Drizzle ORM queries:
+  - POST /api/sessions - Create new session (auth required, user-scoped)
+  - GET /api/sessions - List user's sessions sorted by date desc (auth required)
+  - GET /api/sessions/[id] - Get session with transcript segments (auth required, user-scoped)
+  - DELETE /api/sessions/[id] - Delete session with cascade (auth required, user-scoped)
+  - GET /api/sessions/[id]/export - Export session as Markdown (auth required, user-scoped)
+- Added `createId()` utility function using crypto.randomUUID()
+- Ran connection restart persistence test (scripts/persistence-test.js):
+  - Created test session + segment with unique marker
+  - Closed DB connection completely
+  - Opened new connection
+  - Verified all data persisted correctly
+  - Result: PASSED
+- Ran full server restart persistence test (scripts/full-restart-test.js):
+  - Created test session with unique marker
+  - Killed Next.js dev server
+  - Restarted Next.js dev server
+  - Verified all data persisted across restart
+  - Result: PASSED
+- Verified no mock data patterns in src/ (grep checks all clean)
+- All code passes TypeScript typecheck and ESLint
+
+**Verification evidence:**
+- scripts/persistence-test.js → PASS (connection close/reopen)
+- scripts/full-restart-test.js → PASS (kill + restart server)
+- pnpm run typecheck → clean
+- pnpm run lint → no errors in new files
+- Mock data grep → 0 hits in src/
+
+**Current status:** 4/46 features passing
+
+### What to work on next:
+- Feature #5: Backend API queries real database
+- Feature #6+: Session management features
+- Socket.io integration for real-time audio/transcription

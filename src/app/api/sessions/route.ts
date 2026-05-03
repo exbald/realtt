@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { transcriptionSession, transcriptSegment } from "@/lib/schema";
-import { eq, desc } from "drizzle-orm";
+import { transcriptionSession } from "@/lib/schema";
 import { createId } from "@/lib/utils";
 
 // GET /api/sessions - List user's sessions sorted by date desc
