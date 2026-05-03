@@ -79,6 +79,11 @@ function getSpeakerColor(
   return SPEAKER_COLORS[safeIndex]!;
 }
 
+// Count only final segments for stats
+function countFinalSegments(segments: TranscriptSegment[]): number {
+  return segments.filter((s) => s.isFinal).length;
+}
+
 export function TranscriptLayout({
   segments,
   sourceLanguage,
@@ -100,6 +105,9 @@ export function TranscriptLayout({
     ? sourceLanguage
     : "Source";
   const targetLabel = targetLanguage || "Translation";
+
+  const finalCount = countFinalSegments(segments);
+  const interimCount = segments.length - finalCount;
 
   if (!segments.length) {
     return (
@@ -126,8 +134,13 @@ export function TranscriptLayout({
         </CardTitle>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Badge variant="outline" className="text-xs">
-            {segments.length} segments
+            {finalCount} final
           </Badge>
+          {interimCount > 0 && (
+            <Badge variant="outline" className="text-xs text-yellow-600 dark:text-yellow-400 border-yellow-300 dark:border-yellow-700">
+              {interimCount} interim
+            </Badge>
+          )}
           <span>•</span>
           <span>{speakerMap.size} speakers</span>
         </div>
@@ -155,8 +168,9 @@ export function TranscriptLayout({
         <div className="space-y-0">
           {segments.map((segment, i) => {
             const color = getSpeakerColor(segment.speakerLabel, speakerMap);
+            const isInterim = !segment.isFinal;
             return (
-              <div key={segment.id}>
+              <div key={segment.id} className={isInterim ? "opacity-60" : ""}>
                 {i > 0 && <Separator className="my-3" />}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Original Column */}
@@ -175,8 +189,14 @@ export function TranscriptLayout({
                         {formatTime(segment.startTime)} –{" "}
                         {formatTime(segment.endTime)}
                       </span>
+                      {isInterim && (
+                        <span className="inline-flex items-center gap-1 text-xs text-yellow-600 dark:text-yellow-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500 animate-pulse" />
+                          interim
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm leading-relaxed pl-1">
+                    <p className={`text-sm leading-relaxed pl-1 ${isInterim ? "italic text-muted-foreground" : ""}`}>
                       {segment.originalText}
                     </p>
                   </div>
@@ -200,7 +220,7 @@ export function TranscriptLayout({
                     </div>
                     <p className="text-sm leading-relaxed pl-1">
                       {segment.translatedText ? (
-                        segment.translatedText
+                        <span className={isInterim ? "italic" : ""}>{segment.translatedText}</span>
                       ) : (
                         <span className="italic text-muted-foreground">
                           Translation pending...

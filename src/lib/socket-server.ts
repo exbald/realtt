@@ -1,5 +1,6 @@
 import { createServer } from "http";
-import { Server as SocketIOServer } from "socket.io";
+import { Server as SocketIOServer, Socket } from "socket.io";
+import { DeepgramClient, DeepgramResult } from "./transcription/deepgram-client";
 
 const SOCKET_PORT = parseInt(process.env.SOCKET_PORT || "3099", 10);
 
@@ -7,8 +8,32 @@ const SOCKET_PORT = parseInt(process.env.SOCKET_PORT || "3099", 10);
 let io: SocketIOServer | null = null;
 let httpServer: ReturnType<typeof createServer> | null = null;
 
+// Track Deepgram connections per socket
+const deepgramConnections = new Map<string, DeepgramClient>();
+
 export function getIO(): SocketIOServer | null {
   return io;
+}
+
+function handleTranscriptResult(socket: Socket, result: DeepgramResult): void {
+  // Emit transcript segment to the client
+  socket.emit("transcript-segment", {
+    id: result.id,
+    speakerLabel: result.speakerLabel,
+    originalText: result.originalText,
+    translatedText: result.translatedText,
+    startTime: result.startTime,
+    endTime: result.endTime,
+    isFinal: result.isFinal,
+  });
+
+  // Log significant events
+  if (result.isFinal && result.originalText.trim()) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[Deepgram] Final segment: "${result.originalText.substring(0, 50)}${result.originalText.length > 50 ? "..." : ""}" (${result.speakerLabel}, ${result.startTime.toFixed(1)}s-${result.endTime.toFixed(1)}s)`
+    );
+  }
 }
 
 export function startSocketServer(): Promise<SocketIOServer> {
@@ -74,7 +99,7 @@ export function startSocketServer(): Promise<SocketIOServer> {
       // Handle recording control events
       socket.on(
         "start-recording",
-        (data: { sessionId: string; targetLanguage: string }) => {
+        async (data: { sessionId: string; targetLanguage: string }) => {
           // eslint-disable-next-line no-console
           console.log(
             `[Socket.io] Start recording: session=${data.sessionId}, target=${data.targetLanguage}`
@@ -84,9 +109,32 @@ export function startSocketServer(): Promise<SocketIOServer> {
           socket.data.targetLanguage = data.targetLanguage;
           socket.data.isRecording = true;
           socket.data.chunkCount = 0;
-          socket.emit("recording-status", {
-            status: "active",
-            sessionId: data.sessionId,
+
+          // Create Deepgram connection for this session
+          const deepgram = new DeepgramClient(
+            data.sessionId,
+            data.targetLanguage,
+            (result) => handleTranscriptResult(socket, result)
+          );
+
+          // Store in our map
+          deepgramConnections.set(socket.id, deepgram);
+
+          // Connect to Deepgram (non-blocking)
+          deepgram.connect().then(() => {
+            socket.emit("recording-status", {
+              status: "active",
+              sessionId: data.sessionId,
+              deepgramConnected: true,
+            });
+          }).catch((err) => {
+            console.error("[Socket.io] Deepgram connection failed:", err.message);
+            socket.emit("recording-status", {
+              status: "active",
+              sessionId: data.sessionId,
+              deepgramConnected: false,
+              deepgramError: err.message,
+            });
           });
         }
       );
@@ -97,11 +145,25 @@ export function startSocketServer(): Promise<SocketIOServer> {
         socket.data.chunkCount = chunkCount;
         const sessionId = socket.data.sessionId || "unknown";
 
+        // Forward audio chunk to Deepgram
+        const deepgram = deepgramConnections.get(socket.id);
+        if (deepgram) {
+          let audioData: ArrayBuffer;
+          if (data instanceof ArrayBuffer) {
+            audioData = data;
+          } else if (data && typeof data === "object" && "data" in data) {
+            audioData = (data as { data: ArrayBuffer }).data;
+          } else {
+            audioData = data as unknown as ArrayBuffer;
+          }
+          deepgram.sendAudio(Buffer.from(audioData));
+        }
+
         // Log every 50th chunk to avoid flooding logs
         if (chunkCount % 50 === 0) {
           // eslint-disable-next-line no-console
           console.log(
-            `[Socket.io] Received chunk #${chunkCount} for session ${sessionId} (${typeof data === "object" && data instanceof ArrayBuffer ? (data as ArrayBuffer).byteLength : "unknown"} bytes)`
+            `[Socket.io] Received chunk #${chunkCount} for session ${sessionId}`
           );
         }
 
@@ -111,12 +173,20 @@ export function startSocketServer(): Promise<SocketIOServer> {
         }
       });
 
-      socket.on("stop-recording", (data: { sessionId: string }) => {
+      socket.on("stop-recording", async (data: { sessionId: string }) => {
         // eslint-disable-next-line no-console
         console.log(
           `[Socket.io] Stop recording: session=${data.sessionId}, total chunks received: ${socket.data.chunkCount || 0}`
         );
         socket.data.isRecording = false;
+
+        // Close Deepgram connection and save final segments
+        const deepgram = deepgramConnections.get(socket.id);
+        if (deepgram) {
+          await deepgram.close();
+          deepgramConnections.delete(socket.id);
+        }
+
         socket.data.chunkCount = 0;
         socket.emit("recording-status", {
           status: "stopped",
@@ -153,11 +223,18 @@ export function startSocketServer(): Promise<SocketIOServer> {
       });
 
       // Handle disconnect
-      socket.on("disconnect", (reason) => {
+      socket.on("disconnect", async (reason) => {
         // eslint-disable-next-line no-console
         console.log(
           `[Socket.io] Client disconnected: ${socket.id} (reason: ${reason})`
         );
+
+        // Clean up Deepgram connection
+        const deepgram = deepgramConnections.get(socket.id);
+        if (deepgram) {
+          await deepgram.close();
+          deepgramConnections.delete(socket.id);
+        }
       });
 
       // Handle errors

@@ -216,15 +216,42 @@ export function useMicrophone(savedDeviceId?: string | null): UseMicrophoneRetur
     cleanupStream();
   }, [cleanupStream]);
 
-  // Handle device change
+  // Handle device change - auto-restart preview if active
   const setSelectedDeviceId = useCallback(
     (deviceId: string) => {
+      const wasActive = isActiveRef.current;
       setSelectedDeviceIdState(deviceId);
-      if (isActiveRef.current) {
+      if (wasActive) {
         cleanupStream();
+        // Re-acquire stream with new device constraints after state update
+        // Use setTimeout to ensure selectedDeviceId state has been applied
+        // and buildConstraints will use the new deviceId
+        setTimeout(() => {
+          // startPreview reads selectedDeviceId from closure which is stale
+          // We need to pass constraints directly
+          const acquireNewStream = async () => {
+            try {
+              const constraints: MediaStreamConstraints = {
+                audio: deviceId && deviceId !== "default"
+                  ? { deviceId: { exact: deviceId } }
+                  : true,
+              };
+              const stream = await navigator.mediaDevices.getUserMedia(constraints);
+              streamRef.current = stream;
+              isActiveRef.current = true;
+              setIsActive(true);
+              const audioInputs = await loadAudioDevices();
+              setDevices(audioInputs);
+              startAudioLevelMonitoring(stream);
+            } catch (err: unknown) {
+              handlePermissionError(err);
+            }
+          };
+          acquireNewStream();
+        }, 0);
       }
     },
-    [cleanupStream]
+    [cleanupStream, startAudioLevelMonitoring, handlePermissionError]
   );
 
   // Initial setup: check permission + enumerate devices
