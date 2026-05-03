@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -61,7 +61,8 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 function getLangCode(lang: string): string {
   if (!lang) return "?";
-  return lang.split("-")[0].toLowerCase();
+  const parts = lang.split("-");
+  return parts[0]?.toLowerCase() ?? "?";
 }
 
 function getLangDisplay(lang: string): string {
@@ -178,7 +179,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSessions = useCallback(async () => {
+  const fetchSessions = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -194,13 +195,39 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    if (session?.user?.id) {
-      fetchSessions();
-    }
-  }, [session?.user?.id, fetchSessions]);
+    if (!session?.user?.id) return;
+
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/sessions");
+        if (cancelled) return;
+        if (!res.ok) {
+          if (res.status === 401) return;
+          throw new Error("Failed to fetch sessions");
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setSessions(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load sessions");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
 
   if (isPending) {
     return (
