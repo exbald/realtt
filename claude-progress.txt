@@ -416,3 +416,36 @@ TypeScript: Clean
 **Note:** Browser automation unavailable due to missing Chromium system libraries (libnspr4, libatk-1.0, etc.) - verified via API/HTML testing, TypeScript compilation, ESLint, and code review.
 
 **Current status:** 10/46 features passing
+
+---
+
+### Feature #15: View session detail with transcript segments - PASSED ✅
+
+**What was accomplished:**
+- Verified GET /api/sessions/[id] returns the session with all its transcript segments
+- Each transcript segment contains: id, speakerLabel, originalText, translatedText, startTime, endTime, isFinal, createdAt
+- Segments are ordered chronologically by createdAt
+- Speaker labels are present (Speaker 1, Speaker 2, Speaker 3)
+- Final segments have translated text populated (4/4 final segments)
+- Interim segments can have null translated text (1/1 interim segment)
+- Cross-user data isolation enforced (User 2 gets 404 for User 1's session)
+- Unauthenticated access blocked (401)
+- Session detail page renders at /session/[id] (200 OK when authenticated)
+- Delete cascade works correctly (session + segments deleted)
+- No mock data patterns in src/ (all grep checks clean)
+- Data persists in PostgreSQL (verified via connection close/reopen test)
+
+**Verification:**
+- API test with 5 segments covering 3 speakers, final/interim mix, translations
+- Cross-user isolation test (404 for other user)
+- Unauthenticated access test (401)
+- Mock data grep checks: 0 hits in src/
+- Database persistence test: data survives connection close/reopen
+- Session page returns 200 for authenticated users
+
+**Current status:** 11/46 features passing
+
+### What to work on next:
+- Feature #8-12: Session management and recording features
+- Feature #14+: Socket.io real-time integration
+- Remaining workflow and UI features
