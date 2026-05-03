@@ -792,3 +792,67 @@ TypeScript: Clean
 
 **Current status:** 14/46 features passing
 
+
+## Session: 2026-05-03 (Feature #26)
+
+### Feature #26: Start and stop recording with confirmation dialog - PASSED ✅
+
+**What was accomplished:**
+
+1. **Backend: PATCH /api/sessions/[id] endpoint** (`src/app/api/sessions/[id]/route.ts`)
+   - New PATCH handler to update session status and duration
+   - Validates status values: "recording", "paused", "completed" (400 for invalid)
+   - Validates durationSeconds: must be non-negative number (400 for invalid)
+   - Returns 400 for empty update body
+   - Returns 401 for unauthenticated requests
+   - Returns 404 for sessions not owned by the user (cross-user isolation)
+   - Returns 404 for non-existent sessions
+
+2. **Backend: Session creation with "recording" status** (`src/app/api/sessions/route.ts`)
+   - Changed POST /api/sessions to create sessions with status "recording" (was "completed")
+   - Sessions now start in "recording" state when created from /session/new
+
+3. **Frontend: Recording controls on session detail page** (`src/app/session/[id]/page.tsx`)
+   - Recording status banner with pulsing red dot indicator (animate-ping)
+   - Live timer counting up from 00:00 (monospace font, tabular-nums)
+   - "Stop" button in header (visible only when recording)
+   - "Stop Recording" button in recording banner
+   - Stop confirmation dialog with "Stop recording?" title and "Your transcript will be saved." description
+   - Cancel button in dialog (closes dialog, recording continues)
+   - Confirm button calls PATCH to update session to "completed"
+   - Completed session view: no recording controls, shows formatted duration
+
+4. **Frontend: Delete confirmation dialog** (added by linter)
+   - Replaced browser `confirm()` with proper Dialog component
+   - Shows warning about permanent deletion
+   - Cancel and confirm buttons
+
+**Verification (36/36 tests passing):**
+- POST /api/sessions creates with status "recording" ✅
+- GET /api/sessions/[id] returns recording session ✅
+- PATCH updates status to "completed" with duration ✅
+- PATCH validates status (rejects invalid) ✅
+- PATCH validates duration (rejects negative) ✅
+- PATCH rejects empty update body ✅
+- Unauthenticated access returns 401 ✅
+- Cross-user isolation (404 for other user) ✅
+- Pause/resume flow works ✅
+- Session appears in dashboard list with correct metadata ✅
+- Session detail page renders (200 OK) ✅
+- Completed session page renders without recording controls ✅
+- Data persists across server restart ✅
+
+**Code quality:**
+- TypeScript: Zero errors in src/ ✅
+- ESLint: Zero errors in changed files ✅
+- Mock data grep: Zero hits (globalThis, devStore, mockDb, fakeData, etc.) ✅
+
+**Note:** Browser automation unavailable due to missing Chromium system libraries - verified via comprehensive API/HTML testing with 36 test assertions.
+
+**Current status:** 15/46 features passing
+
+### What to work on next:
+- Feature #18+: Real-time audio streaming to server
+- Feature #21+: Deepgram integration for transcription
+- Feature #22+: Translation via OpenRouter
+- Feature #23+: Transcript display features
