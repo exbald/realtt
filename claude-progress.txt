@@ -285,3 +285,38 @@ TypeScript: Clean
 **Note:** Browser automation (playwright-cli) unavailable due to missing system libraries - verified via comprehensive API/HTML testing with curl.
 
 **Current status:** 8/46 features passing
+
+---
+
+### Feature #13: Create new transcription session with target language - PASSED ✅
+
+**What was accomplished:**
+- Enhanced `/session/new/page.tsx` with full session creation workflow:
+  - Session title input with placeholder "Untitled Session"
+  - Target language dropdown with 12 languages (English, Spanish, French, German, Italian, Portuguese, Mandarin, Japanese, Korean, Arabic, Russian, Hindi)
+  - Microphone selection dropdown listing available audio input devices via `useMicrophone` hook
+  - Audio level preview bar with real-time metering via `AudioLevelIndicator` component
+  - "Start Recording" button with Mic icon
+  - Auto-loads user's saved default target language and microphone from settings
+  - Persists selected microphone to user settings on change
+- Created `src/hooks/use-microphone.ts` - Custom hook for microphone device enumeration, permission management, and audio level monitoring
+- Created `src/components/audio-level-indicator.tsx` - Visual audio level bar with permission request flow
+- Updated language label from "Chinese" to "Mandarin" per spec
+
+**Verification:**
+- GET /session/new → 200 OK (authenticated), 307 redirect (unauthenticated)
+- POST /api/sessions → 201 Created with correct fields (title, targetLanguage, userId)
+- GET /api/sessions → Session appears in list
+- GET /session/[id] → 200 OK (live session page)
+- Empty title defaults to "Untitled Session" correctly
+- Data persists in PostgreSQL (not in-memory)
+- Mock data grep: 0 hits for globalThis, devStore, mockDb, fakeData, etc.
+- ESLint: 0 errors in session/new/page.tsx
+- TypeScript: Clean (no errors in changed files)
+
+**Current status:** 9/46 features passing
+
+### What to work on next:
+- Feature #7+: Session management and recording features
+- Socket.io integration for real-time audio/transcription
+- Remaining workflow and UI features
