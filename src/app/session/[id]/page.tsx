@@ -105,6 +105,46 @@ function formatTimer(totalSeconds: number): string {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
+/**
+ * Merge database segments with live (real-time) segments.
+ * Live segments replace database segments when they overlap (interim → final).
+ * Final live segments take priority over database segments.
+ */
+function mergeSegments(
+  dbSegments: TranscriptSegment[],
+  liveSegments: TranscriptSegment[]
+): TranscriptSegment[] {
+  if (liveSegments.length === 0) return dbSegments;
+  if (dbSegments.length === 0) return liveSegments;
+
+  // Start with DB segments that aren't overridden by live segments
+  const merged = dbSegments.filter((db) => {
+    // If there's a final live segment for the same speaker/time, prefer live
+    return !liveSegments.some(
+      (live) =>
+        live.isFinal &&
+        live.speakerLabel === db.speakerLabel &&
+        Math.abs(live.startTime - db.startTime) < 2
+    );
+  });
+
+  // Add all live segments
+  for (const live of liveSegments) {
+    // Don't add live segments that duplicate DB segments
+    if (!merged.some((m) => m.id === live.id)) {
+      merged.push(live);
+    }
+  }
+
+  // Sort by start time, then by createdAt
+  merged.sort((a, b) => {
+    if (a.startTime !== b.startTime) return a.startTime - b.startTime;
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+
+  return merged;
+}
+
 export default function SessionDetailPage() {
   const { data: session, isPending } = useSession();
   const router = useRouter();
@@ -122,6 +162,9 @@ export default function SessionDetailPage() {
   // Delete state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Real-time transcript segments (interim + final from Deepgram)
+  const [liveSegments, setLiveSegments] = useState<TranscriptSegment[]>([]);
 
   // Socket.io connection - auto-connects when sessionId is available
   const {
@@ -159,11 +202,52 @@ export default function SessionDetailPage() {
     },
   });
 
+  // Listen for real-time transcript segments from Deepgram
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleTranscriptSegment = (segment: TranscriptSegment & { isFinal?: boolean }) => {
+      setLiveSegments((prev) => {
+        // For final segments, replace any matching interim segment
+        if (segment.isFinal) {
+          // Check if there's an interim segment with similar timing for same speaker
+          const filtered = prev.filter(
+            (s) =>
+              !(
+                s.speakerLabel === segment.speakerLabel &&
+                !s.isFinal &&
+                Math.abs(s.startTime - segment.startTime) < 2
+              )
+          );
+          return [...filtered, { ...segment, createdAt: segment.createdAt || new Date().toISOString() }];
+        }
+
+        // For interim segments, replace existing interim for same speaker/time range
+        const filtered = prev.filter(
+          (s) =>
+            !(
+              s.speakerLabel === segment.speakerLabel &&
+              !s.isFinal &&
+              Math.abs(s.startTime - segment.startTime) < 2
+            )
+        );
+        return [...filtered, { ...segment, createdAt: segment.createdAt || new Date().toISOString() }];
+      });
+    };
+
+    socket.on("transcript-segment", handleTranscriptSegment);
+
+    return () => {
+      socket.off("transcript-segment", handleTranscriptSegment);
+    };
+  }, [socket]);
+
   // Audio streaming hook
   const {
     recordingState,
     chunksSent,
     duration: streamingDuration,
+    audioLevel,
     isSupported: isMediaRecorderSupported,
     startRecording,
     pauseRecording,
@@ -234,15 +318,49 @@ export default function SessionDetailPage() {
     }
   }, [sessionId, startRecording]);
 
-  const handlePauseRecording = useCallback(() => {
+  const handlePauseRecording = useCallback(async () => {
     pauseRecording();
-    toast.info("Recording paused");
-  }, [pauseRecording]);
 
-  const handleResumeRecording = useCallback(() => {
+    // Update session status to "paused" in the database
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "paused" }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+      }
+    } catch {
+      // Database update failed but recording is still paused client-side
+      console.error("[Session] Failed to update pause status in database");
+    }
+
+    toast.info("Recording paused");
+  }, [pauseRecording, sessionId]);
+
+  const handleResumeRecording = useCallback(async () => {
     resumeRecording();
+
+    // Update session status back to "recording" in the database
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "recording" }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+      }
+    } catch {
+      // Database update failed but recording is still resumed client-side
+      console.error("[Session] Failed to update resume status in database");
+    }
+
     toast.info("Recording resumed");
-  }, [resumeRecording]);
+  }, [resumeRecording, sessionId]);
 
   const handleStopRecording = useCallback(async () => {
     setIsStopping(true);
@@ -462,6 +580,29 @@ export default function SessionDetailPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3">
+                {/* Audio level bar */}
+                <div className="hidden sm:flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Level</span>
+                  <div className="flex items-center gap-[2px] h-4" role="meter" aria-label="Audio input level" aria-valuenow={Math.round(audioLevel * 100)} aria-valuemin={0} aria-valuemax={100}>
+                    {Array.from({ length: 12 }).map((_, i) => {
+                      const activeBars = Math.round(audioLevel * 12);
+                      const filled = i < activeBars;
+                      let barColor = "bg-green-500";
+                      if (i >= 12 * 0.7) {
+                        barColor = "bg-red-500";
+                      } else if (i >= 12 * 0.5) {
+                        barColor = "bg-yellow-500";
+                      }
+                      return (
+                        <div
+                          key={i}
+                          className={`w-1.5 rounded-sm transition-all duration-75 ${filled ? barColor : "bg-muted"}`}
+                          style={{ minHeight: "4px" }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
                 {/* Chunk counter */}
                 <span className="text-xs text-muted-foreground">
                   {chunksSent} chunks sent
@@ -626,7 +767,7 @@ export default function SessionDetailPage() {
       </Card>
 
       <TranscriptLayout
-        segments={sessionData.segments || []}
+        segments={mergeSegments(sessionData.segments || [], liveSegments)}
         sourceLanguage={sessionData.sourceLanguage}
         targetLanguage={sessionData.targetLanguage}
       />

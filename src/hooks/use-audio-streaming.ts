@@ -33,6 +33,8 @@ export interface UseAudioStreamingReturn {
   duration: number;
   /** Whether the browser supports MediaRecorder */
   isSupported: boolean;
+  /** Audio level between 0 and 1 (updated in real-time while recording) */
+  audioLevel: number;
   /** Start recording */
   startRecording: () => Promise<void>;
   /** Pause recording */
@@ -59,6 +61,7 @@ export function useAudioStreaming({
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [chunksSent, setChunksSent] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -67,6 +70,10 @@ export function useAudioStreaming({
   const startTimeRef = useRef<number>(0);
   const pausedDurationRef = useRef<number>(0);
   const isStoppingRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   const isSupported = typeof window !== "undefined" && typeof MediaRecorder !== "undefined";
 
@@ -77,6 +84,22 @@ export function useAudioStreaming({
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
     }
+
+    // Stop audio level monitoring
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (sourceRef.current) {
+      try { sourceRef.current.disconnect(); } catch { /* ignore */ }
+      sourceRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      try { audioContextRef.current.close(); } catch { /* ignore */ }
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    setAudioLevel(0);
 
     // Stop MediaRecorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -203,6 +226,38 @@ export function useAudioStreaming({
       // Start recording with timeslice for consistent chunk rate
       mediaRecorder.start(CHUNK_TIMESLICE);
 
+      // Start audio level monitoring via Web Audio API
+      try {
+        const audioContext = new AudioContext();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+        sourceRef.current = source;
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const updateLevel = () => {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const val = dataArray[i]!;
+            sum += val * val;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          const normalizedLevel = Math.min(1, rms / 128);
+          setAudioLevel(normalizedLevel);
+          animationFrameRef.current = requestAnimationFrame(updateLevel);
+        };
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
+      } catch {
+        // Audio level monitoring is optional - recording continues without it
+        console.warn("[AudioStreaming] Could not start audio level monitoring");
+      }
+
       // Start duration timer
       startTimeRef.current = Date.now();
       pausedDurationRef.current = 0;
@@ -229,6 +284,13 @@ export function useAudioStreaming({
       mediaRecorderRef.current.pause();
     }
 
+    // Pause audio level monitoring (keep last value displayed)
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    setAudioLevel(0); // Show zero level when paused
+
     // Pause duration timer
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
@@ -251,6 +313,25 @@ export function useAudioStreaming({
     // Resume MediaRecorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
       mediaRecorderRef.current.resume();
+    }
+
+    // Resume audio level monitoring
+    if (analyserRef.current && audioContextRef.current && audioContextRef.current.state !== "closed") {
+      const analyser = analyserRef.current;
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateLevel = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const val = dataArray[i]!;
+          sum += val * val;
+        }
+        const rms = Math.sqrt(sum / dataArray.length);
+        const normalizedLevel = Math.min(1, rms / 128);
+        setAudioLevel(normalizedLevel);
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+      animationFrameRef.current = requestAnimationFrame(updateLevel);
     }
 
     // Resume duration timer
@@ -304,6 +385,7 @@ export function useAudioStreaming({
     chunksSent,
     duration,
     isSupported,
+    audioLevel,
     startRecording,
     pauseRecording,
     resumeRecording,
