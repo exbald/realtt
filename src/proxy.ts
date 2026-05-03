@@ -10,7 +10,7 @@ import { getSessionCookie } from "better-auth/cookies";
  */
 
 // Routes that require authentication
-const protectedRoutes = ["/dashboard", "/chat", "/profile", "/session"];
+const protectedRoutes = ["/dashboard", "/chat", "/profile", "/session", "/settings"];
 
 // Auth routes that should redirect to dashboard if already logged in
 const authRoutes = ["/login", "/register"];
@@ -48,7 +48,10 @@ export const config = {
     "/chat/:path*",
     "/profile",
     "/profile/:path*",
+    "/session",
     "/session/:path*",
+    "/settings",
+    "/settings/:path*",
     "/login",
     "/register",
   ],

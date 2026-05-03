@@ -226,6 +226,62 @@
 **Current status:** 7/46 features passing
 
 ### What to work on next:
-- Feature #7+: Session management UI features
+- Feature #8+: Session management UI features
 - Socket.io integration for real-time audio/transcription
-- Remaining Security & Access Control features
+- Remaining features
+
+---
+
+### Feature #7: Protected routes enforce authentication - PASSED ✅
+
+**What was accomplished:**
+- Updated `src/proxy.ts` middleware to include `/settings` in both `protectedRoutes` array and `config.matcher`
+- Added `/session` (exact match) to `config.matcher` alongside existing `/session/:path*`
+- Created `/settings` page (`src/app/settings/page.tsx`):
+  - Translation settings with target language dropdown
+  - Audio settings card
+  - Uses real /api/settings endpoint for loading/saving
+  - Client-side auth check redirects to home if not logged in
+- Created `/session/new` page (`src/app/session/new/page.tsx`):
+  - Session title input and target language selector
+  - Loads user's default language from /api/settings
+  - Creates session via POST /api/sessions
+- Created `/session/[id]` page (`src/app/session/[id]/page.tsx`):
+  - Session detail view with metadata (status, languages, duration)
+  - Transcript segments display with speaker labels
+  - Export and delete buttons
+  - Fetches data via GET /api/sessions/[id]
+- Added shadcn/ui Select component (`src/components/ui/select.tsx`)
+- Installed `@radix-ui/react-select` dependency
+
+**All 12 verification steps passed:**
+
+Unauthenticated redirects (all → 307 /login):
+1. /dashboard → 307 redirect to /login ✅
+2. /session/new → 307 redirect to /login ✅
+3. /session/nonexistent-id → 307 redirect to /login ✅
+4. /settings → 307 redirect to /login ✅
+
+Unauthenticated API (all → 401):
+5. GET /api/sessions → 401 Unauthorized ✅
+6. POST /api/sessions → 401 Unauthorized ✅
+
+Authenticated access (all → 200/201):
+7. /dashboard → 200 ✅
+8. /session/new → 200 ✅
+9. /session/[id] → 200 ✅
+10. /settings → 200 ✅
+11. GET /api/sessions → 200 (empty array) ✅
+12. POST /api/sessions → 201 (creates session) ✅
+
+Cross-user isolation:
+- User 2 cannot see User 1's sessions (empty list) ✅
+- User 2 gets 404 for User 1's session ID ✅
+
+Mock data grep checks: 0 hits for globalThis, devStore, mockDb, fakeData, etc.
+ESLint: 0 errors in new files (1 import order warning fixed)
+TypeScript: Clean
+
+**Note:** Browser automation (playwright-cli) unavailable due to missing system libraries - verified via comprehensive API/HTML testing with curl.
+
+**Current status:** 8/46 features passing
