@@ -320,3 +320,50 @@ TypeScript: Clean
 - Feature #7+: Session management and recording features
 - Socket.io integration for real-time audio/transcription
 - Remaining workflow and UI features
+
+---
+
+### Feature #17: Microphone capture and permission handling - PASSED ✅
+
+**What was accomplished:**
+- Verified and enhanced `src/hooks/use-microphone.ts` - Custom hook providing:
+  - Device enumeration via `navigator.mediaDevices.enumerateDevices()` - lists all audio input devices
+  - Permission management via `navigator.permissions.query()` + `getUserMedia()` with state tracking (prompt/granted/denied/unsupported)
+  - Audio level monitoring via Web Audio API (`AudioContext` + `AnalyserNode`) with real-time RMS level calculation
+  - Device switching with automatic stream cleanup and re-initialization
+  - `devicechange` event listener for hot-plug/unplug detection
+  - Proper cleanup on unmount (stops streams, closes AudioContext, cancels animation frames)
+  - Graceful error handling for all error types: NotAllowedError, NotFoundError, NotReadableError
+- Verified `src/components/audio-level-indicator.tsx` - Visual component providing:
+  - 20-segment audio level bar with green/yellow/red gradient based on level
+  - "Live" indicator with pulsing green dot when preview is active
+  - "Test Microphone" button for initial permission request (prompt state)
+  - "Test Microphone" button for restarting preview (granted but inactive state)
+  - "Stop Test" button for stopping the preview (active state)
+  - User-friendly error card for permission denied (AlertTriangle icon, descriptive message)
+  - User-friendly error card for unsupported browser (MicOff icon)
+  - Loading state with spinner during permission request
+  - ARIA meter role for accessibility
+- Verified `src/app/session/new/page.tsx` - Enhanced session creation page:
+  - Microphone selection dropdown (`#microphone-select`) listing available audio input devices
+  - Hint text when no devices listed yet (prompts to click "Test Microphone")
+  - Selected microphone persisted to user settings via PATCH /api/settings
+  - Saved microphone loaded from settings on page load
+  - Preview stream stopped before session creation
+- Settings API verified: PATCH/GET /api/settings correctly saves and retrieves `selectedMicrophoneId`
+
+**Verification:**
+- TypeScript typecheck: Clean (no errors in our files; pre-existing errors in regression-tests and dashboard)
+- ESLint: 0 errors in new files (only pre-existing warnings)
+- Mock data grep: 0 hits for globalThis, devStore, mockDb, fakeData, isDevelopment, etc.
+- API tests:
+  - PATCH /api/settings with selectedMicrophoneId → 200, saved correctly
+  - GET /api/settings → returns saved microphone ID
+  - POST /api/sessions → 201, creates session correctly
+  - GET /session/new → 200 (authenticated), 307 redirect (unauthenticated)
+- No mock data or stub patterns
+- All 11 feature steps covered by implementation
+
+**Note:** Browser automation unavailable due to missing Chromium system libraries (libnspr4, libatk-1.0, etc.) - verified via API/HTML testing, TypeScript compilation, ESLint, and code review.
+
+**Current status:** 10/46 features passing
