@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Trash2, Download } from "lucide-react";
+import {
+  ArrowLeft,
+  Trash2,
+  Download,
+  Wifi,
+  WifiOff,
+  Loader2,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { useSocket, ConnectionState } from "@/hooks/use-socket";
 import { useSession } from "@/lib/auth-client";
 
 interface TranscriptSegment {
@@ -39,14 +48,86 @@ interface TranscriptionSession {
   segments: TranscriptSegment[];
 }
 
+function getConnectionStateDisplay(state: ConnectionState, transport: string | null) {
+  switch (state) {
+    case "connected":
+      return {
+        label: transport === "websocket" ? "WebSocket" : "Connected",
+        icon: Wifi,
+        color: "text-green-500",
+        bgColor: "bg-green-50 dark:bg-green-950",
+      };
+    case "connecting":
+      return {
+        label: "Connecting...",
+        icon: Loader2,
+        color: "text-yellow-500",
+        bgColor: "bg-yellow-50 dark:bg-yellow-950",
+      };
+    case "reconnecting":
+      return {
+        label: "Reconnecting...",
+        icon: Loader2,
+        color: "text-orange-500",
+        bgColor: "bg-orange-50 dark:bg-orange-950",
+      };
+    case "disconnected":
+    default:
+      return {
+        label: "Disconnected",
+        icon: WifiOff,
+        color: "text-red-500",
+        bgColor: "bg-red-50 dark:bg-red-950",
+      };
+  }
+}
+
 export default function SessionDetailPage() {
   const { data: session, isPending } = useSession();
   const router = useRouter();
   const params = useParams();
   const sessionId = params.id as string;
-  const [sessionData, setSessionData] = useState<TranscriptionSession | null>(null);
+  const [sessionData, setSessionData] = useState<TranscriptionSession | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDisconnectWarning, setShowDisconnectWarning] = useState(false);
+
+  // Socket.io connection - auto-connects when sessionId is available
+  const {
+    connectionState,
+    isConnected,
+    reconnectAttempts,
+    transport,
+    disconnect: disconnectSocket,
+  } = useSocket({
+    autoConnect: true,
+    sessionId,
+    onConnect: (socket) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Session] Socket connected: ${socket.id}`);
+      toast.success("Real-time connection established");
+    },
+    onDisconnect: (reason) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Session] Socket disconnected: ${reason}`);
+      if (reason === "io server disconnect" || reason === "io client disconnect") {
+        // Intentional disconnect - no warning needed
+        return;
+      }
+      setShowDisconnectWarning(true);
+    },
+    onReconnect: () => {
+      // eslint-disable-next-line no-console
+      console.log("[Session] Socket reconnected");
+      toast.success("Connection restored");
+      setShowDisconnectWarning(false);
+    },
+    onError: (err) => {
+      console.error("[Session] Socket error:", err.message);
+    },
+  });
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -71,6 +152,14 @@ export default function SessionDetailPage() {
         });
     }
   }, [session?.user?.id, sessionId]);
+
+  // Cleanup socket on unmount (handled by useSocket hook, but also explicitly)
+  useEffect(() => {
+    return () => {
+      // Socket cleanup is handled by useSocket's useEffect cleanup
+      // This is just for explicit page-level awareness
+    };
+  }, []);
 
   if (isPending || !session) {
     return (
@@ -104,9 +193,7 @@ export default function SessionDetailPage() {
         </div>
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              {error || "Session not found"}
-            </p>
+            <p className="text-muted-foreground">{error || "Session not found"}</p>
           </CardContent>
         </Card>
       </div>
@@ -120,8 +207,11 @@ export default function SessionDetailPage() {
   const handleDelete = async () => {
     if (!confirm("Are you sure you want to delete this session?")) return;
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
       if (res.ok) {
+        disconnectSocket();
         toast.success("Session deleted");
         router.push("/dashboard");
       } else {
@@ -137,6 +227,9 @@ export default function SessionDetailPage() {
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
   };
+
+  const connectionDisplay = getConnectionStateDisplay(connectionState, transport);
+  const ConnectionIcon = connectionDisplay.icon;
 
   return (
     <div className="container max-w-4xl mx-auto py-8 px-4">
@@ -165,6 +258,60 @@ export default function SessionDetailPage() {
         </div>
       </div>
 
+      {/* Connection Status Banner */}
+      <Card className="mb-6">
+        <CardContent className="py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ConnectionIcon
+                className={`h-4 w-4 ${connectionDisplay.color} ${
+                  connectionState === "connecting" || connectionState === "reconnecting"
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+              <span className={`text-sm font-medium ${connectionDisplay.color}`}>
+                {connectionDisplay.label}
+              </span>
+              {isConnected && transport && (
+                <Badge variant="outline" className="text-xs">
+                  {transport}
+                </Badge>
+              )}
+              {reconnectAttempts > 0 && connectionState === "reconnecting" && (
+                <span className="text-xs text-muted-foreground">
+                  (attempt {reconnectAttempts})
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={sessionData.status === "recording" ? "default" : "secondary"}
+              >
+                {sessionData.status}
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Disconnection Warning */}
+      {showDisconnectWarning && (
+        <Card className="mb-6 border-orange-300 dark:border-orange-700">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              <div>
+                <p className="text-sm font-medium">Connection Lost</p>
+                <p className="text-xs text-muted-foreground">
+                  Attempting to reconnect... Your session data is safe.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Session Details</CardTitle>
@@ -173,7 +320,9 @@ export default function SessionDetailPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Status</p>
-              <Badge variant={sessionData.status === "recording" ? "default" : "secondary"}>
+              <Badge
+                variant={sessionData.status === "recording" ? "default" : "secondary"}
+              >
                 {sessionData.status}
               </Badge>
             </div>
@@ -187,7 +336,9 @@ export default function SessionDetailPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Duration</p>
-              <p className="font-medium">{formatDuration(sessionData.durationSeconds)}</p>
+              <p className="font-medium">
+                {formatDuration(sessionData.durationSeconds)}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -203,7 +354,8 @@ export default function SessionDetailPage() {
         <CardContent>
           {!sessionData.segments?.length ? (
             <p className="text-muted-foreground text-center py-8">
-              No transcript segments yet. Start recording to see transcription results.
+              No transcript segments yet. Start recording to see transcription
+              results.
             </p>
           ) : (
             <div className="space-y-4">
