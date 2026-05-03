@@ -1,0 +1,479 @@
+<project_specification>
+  <project_name>Real Team Translation</project_name>
+
+  <overview>
+    A real-time transcription and translation tool for journalists. Users capture audio from meetings or calls via their browser microphone, transcribe speech in real-time using Deepgram with speaker diarization, and translate the transcript on-the-fly to a target language via OpenRouter. Transcripts are saved per session and can be exported as Markdown files.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>Next.js 16 (App Router) with React 19 and TypeScript</framework>
+      <styling>Tailwind CSS v4 + shadcn/ui (new-york variant, neutral base)</styling>
+      <components>Lucide React icons, Sonner toasts, next-themes for dark/light mode</components>
+      <fonts>Geist (sans) and Geist Mono (monospace)</fonts>
+    </frontend>
+    <backend>
+      <runtime>Next.js 16 API Routes (App Router)</runtime>
+      <database>PostgreSQL 18 with pgvector extension (Docker)</database>
+      <orm>Drizzle ORM</orm>
+      <auth>Better Auth (email/password, sessions)</auth>
+      <realtime>Socket.io for WebSocket communication (audio streaming, transcript delivery)</realtime>
+    </backend>
+    <communication>
+      <api>REST API for session CRUD, WebSocket (Socket.io) for real-time audio/transcript streaming</api>
+      <speech_to_text>Deepgram API via WebSocket (streaming transcription with speaker diarization)</speech_to_text>
+      <translation>OpenRouter via Vercel AI SDK (streamText) for real-time translation of transcript segments</translation>
+    </communication>
+    <existing_boilerplate>
+      The project uses the "Agentic Coding Starter Kit" v1.1.2 which already provides:
+      - Next.js 16 + React 19 + TypeScript setup with strict compiler options
+      - Better Auth with email/password (login, register, forgot/reset password, sessions)
+      - Drizzle ORM with PostgreSQL (Docker Compose included)
+      - OpenRouter integration via Vercel AI SDK v5 (chat endpoint at /api/chat)
+      - shadcn/ui components (button, card, dialog, input, label, textarea, badge, avatar, dropdown-menu, separator, skeleton, spinner, mode-toggle, sonner)
+      - Dark/light theme via next-themes
+      - Protected route middleware (proxy.ts)
+      - Design system with oklch color tokens (see DESIGN.md)
+      - Diagnostics endpoint at /api/diagnostics
+      - File upload support (Vercel Blob or local filesystem)
+      - ESLint + Prettier configured
+    </existing_boilerplate>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      1. PostgreSQL 18 running via Docker Compose (docker-compose.yml provided)
+      2. Node.js 20+ and pnpm installed
+      3. Environment variables configured in .env:
+         - DEEPGRAM_API_KEY (for speech-to-text)
+         - OPENROUTER_API_KEY (for translation LLM)
+         - OPENROUTER_MODEL (e.g., "openai/gpt-4o-mini" or "anthropic/claude-sonnet-4-20250514")
+         - POSTGRES_URL (PostgreSQL connection string)
+         - BETTER_AUTH_SECRET (session encryption)
+         - PORT (default 3000)
+      4. Run: pnpm install
+      5. Run: pnpm run db:push (apply schema to database)
+      6. Run: pnpm run dev (start development server)
+    </environment_setup>
+  </prerequisites>
+
+  <feature_count>46</feature_count>
+
+  <security_and_access_control>
+    <user_roles>
+      <role name="authenticated_user">
+        <permissions>
+          - Can create, view, and delete their own transcription sessions
+          - Can start/stop/pause recording in their own sessions
+          - Can export their own session transcripts as Markdown
+          - Can update their profile and settings
+          - Cannot access other users' sessions or data
+        </permissions>
+        <protected_routes>
+          - /dashboard (authenticated users only)
+          - /session/* (authenticated users only)
+          - /settings (authenticated users only)
+          - /api/sessions/* (authenticated users only)
+        </protected_routes>
+      </role>
+    </user_roles>
+    <authentication>
+      <method>Email/password via Better Auth (already implemented in boilerplate)</method>
+      <session_timeout>Default Better Auth session management</session_timeout>
+      <password_requirements>Minimum 8 characters (enforced by existing register form)</password_requirements>
+    </authentication>
+    <sensitive_operations>
+      - Deepgram API key must never be exposed to the client (server-side only)
+      - OpenRouter API key must never be exposed to the client (server-side only)
+      - Audio streams are not persisted to disk — only transcribed text is stored
+    </sensitive_operations>
+  </security_and_access_control>
+
+  <core_features>
+    <infrastructure>
+      - Database connection established
+      - Database schema applied correctly
+      - Data persists across server restart
+      - No mock data patterns in codebase
+      - Backend API queries real database
+    </infrastructure>
+
+    <session_management>
+      - Create new transcription session with target language selection
+      - View list of past sessions on dashboard with metadata (date, duration, languages, status)
+      - View a completed session's full transcript with side-by-side original and translation
+      - Delete a session with confirmation dialog
+      - Session status tracking (recording, paused, completed)
+      - Session metadata: created date, duration, source language (auto-detected), target language, speaker count
+    </session_management>
+
+    <microphone_and_audio>
+      - Browser microphone capture with permission prompt handling
+      - Audio streaming to server via Socket.io WebSocket
+      - Visual audio level indicator (live waveform or volume bar showing mic is active)
+      - Microphone device selection (dropdown of available audio inputs)
+      - Mute/unmute toggle during recording
+    </microphone_and_audio>
+
+    <deepgram_transcription>
+      - Server-side WebSocket connection to Deepgram API (API key never reaches client)
+      - Stream audio chunks from client to Deepgram in real-time
+      - Display interim (in-progress) transcription results with visual distinction
+      - Display final transcription results replacing interim text
+      - Speaker diarization: identify and label speakers (Speaker 1, Speaker 2, etc.)
+      - Graceful handling of Deepgram connection errors with user-friendly error messages
+    </deepgram_transcription>
+
+    <realtime_translation>
+      - Send final transcript segments to OpenRouter for translation via Vercel AI SDK
+      - Display translated text in real-time alongside original transcript
+      - Support for 10+ target languages: English, Spanish, French, German, Portuguese, Arabic, Mandarin, Japanese, Russian, Hindi, Korean, Italian
+      - Graceful handling of translation errors (show original text, display error indicator)
+      - Translation appears incrementally as final segments arrive (streaming feel)
+    </realtime_translation>
+
+    <transcript_display>
+      - Side-by-side layout: original language (left) | translated language (right)
+      - Speaker labels with distinct color coding per speaker
+      - Timestamps per transcript segment
+      - Auto-scroll to latest transcript entry during live recording
+      - Interim results displayed in lighter/italic style, replaced by final text
+      - Responsive layout that stacks vertically on narrow screens
+    </transcript_display>
+
+    <session_controls>
+      - Start recording button (prominent, red record icon)
+      - Stop recording button with confirmation to prevent accidental stops
+      - Pause/resume recording toggle
+      - Live recording timer showing elapsed duration
+      - Visual recording indicator (pulsing red dot when recording is active)
+    </session_controls>
+
+    <export>
+      - Export session transcript as Markdown (.md) file
+      - Markdown includes session metadata header (date, duration, source language, target language, speaker count)
+      - Download triggers browser save dialog with descriptive filename (session-name_YYYY-MM-DD.md)
+    </export>
+
+    <dashboard>
+      - List of recent sessions sorted by date (most recent first)
+      - Quick "New Session" button prominently displayed
+      - Session cards show: name, date, duration, language pair, status, speaker count
+      - Click session card to view full transcript
+      - Empty state message when no sessions exist ("Start your first transcription")
+    </dashboard>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <session>
+        - id (text, primary key, cuid)
+        - user_id (text, foreign key -> user.id, not null, cascade delete)
+        - title (text, not null, default "Untitled Session")
+        - status (text, not null, default "completed" — values: "recording", "paused", "completed")
+        - source_language (text, default "auto-detected" — the detected language of the audio)
+        - target_language (text, not null — the translation target language code, e.g., "es", "fr", "en")
+        - duration_seconds (integer, default 0 — total recording duration)
+        - speaker_count (integer, default 0 — number of detected speakers)
+        - created_at (timestamp, not null, default now)
+        - updated_at (timestamp, not null, default now)
+      </session>
+
+      <transcript_segment>
+        - id (text, primary key, cuid)
+        - session_id (text, foreign key -> session.id, not null, cascade delete)
+        - speaker_label (text, not null — e.g., "Speaker 1", "Speaker 2")
+        - original_text (text, not null — the transcribed text in source language)
+        - translated_text (text — the translated text in target language, null until translated)
+        - start_time (float — offset in seconds from session start)
+        - end_time (float — offset in seconds from session start)
+        - is_final (boolean, not null, default false — whether this is a final or interim segment)
+        - created_at (timestamp, not null, default now)
+        - updated_at (timestamp, not null, default now)
+      </transcript_segment>
+
+      <user_settings>
+        - id (text, primary key, cuid)
+        - user_id (text, foreign key -> user.id, not null, unique, cascade delete)
+        - default_target_language (text, default "en" — user's preferred translation language)
+        - selected_microphone_id (text — browser microphone device ID preference)
+        - updated_at (timestamp, not null, default now)
+      </user_settings>
+    </tables>
+
+    <indexes>
+      - session: index on user_id, index on created_at (descending)
+      - transcript_segment: index on session_id, index on (session_id, created_at)
+      - user_settings: unique index on user_id
+    </indexes>
+
+    <relationships>
+      - user 1:N session (a user has many sessions)
+      - session 1:N transcript_segment (a session has many transcript segments)
+      - user 1:1 user_settings (a user has one settings record)
+    </relationships>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <sessions>
+      - POST /api/sessions — Create a new transcription session
+      - GET /api/sessions — List user's sessions (sorted by date desc)
+      - GET /api/sessions/[id] — Get session with transcript segments
+      - DELETE /api/sessions/[id] — Delete a session and its segments
+    </sessions>
+
+    <export>
+      - GET /api/sessions/[id]/export — Export session transcript as Markdown
+    </export>
+
+    <settings>
+      - GET /api/settings — Get user settings
+      - PATCH /api/settings — Update user settings (default language, mic preference)
+    </settings>
+
+    <websocket_events>
+      - Client -> Server: "audio-chunk" (binary audio data from microphone)
+      - Client -> Server: "start-recording" (session_id, target_language)
+      - Client -> Server: "stop-recording" (session_id)
+      - Client -> Server: "pause-recording" (session_id)
+      - Client -> Server: "resume-recording" (session_id)
+      - Server -> Client: "transcript-interim" (interim transcription result with speaker label)
+      - Server -> Client: "transcript-final" (final transcription result with speaker label and timestamps)
+      - Server -> Client: "translation" (translated text for a final segment)
+      - Server -> Client: "recording-status" (current recording state: active, paused, stopped)
+      - Server -> Client: "error" (error message for Deepgram/translation failures)
+    </websocket_events>
+
+    <existing_endpoints_to_keep>
+      - POST /api/auth/[...all] — Better Auth catch-all (keep as-is)
+      - GET /api/diagnostics — Health check (keep as-is)
+      - POST /api/chat — OpenRouter chat (keep as-is, used by existing chat page)
+    </existing_endpoints_to_keep>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      Top navigation bar: Logo "Real Team Translation" | New Session button | Settings icon | User avatar dropdown (profile, logout)
+    </main_structure>
+
+    <pages>
+      <landing_page>
+        Path: / (existing, modify to show app purpose instead of boilerplate marketing)
+        Hero section explaining the app: "Real-time transcription and translation for journalists"
+        Call-to-action: "Start New Session" or "Sign In"
+        Brief feature highlights
+      </landing_page>
+
+      <dashboard_page>
+        Path: /dashboard
+        Top section: "New Session" button (prominent, primary color)
+        Session list: Cards showing recent sessions with metadata
+        Each card: title, date, duration, language pair badge (e.g., "EN → ES"), status badge, speaker count
+        Click card -> navigate to /session/[id]
+        Empty state: Illustration + "Start your first transcription session" + CTA button
+        Session search/filter by date range or language pair
+      </dashboard_page>
+
+      <new_session_page>
+        Path: /session/new
+        Step 1: Session title input (optional, auto-generated if blank)
+        Step 2: Target language dropdown (searchable list of 12+ languages)
+        Step 3: Microphone selection dropdown (populated from browser MediaDevices API)
+        "Start Recording" button (large, prominent)
+        Audio level preview bar (shows mic is working before starting)
+      </new_session_page>
+
+      <live_session_page>
+        Path: /session/[id] (during active recording)
+        Top bar: Session title | Recording indicator (pulsing red dot + timer) | Pause/Stop buttons
+        Main area: Side-by-side transcript view
+          - Left column: Original language transcript (auto-detected)
+          - Right column: Target language translation
+          - Each segment: Speaker label (color-coded) | Timestamp | Text
+          - Interim text: lighter opacity, italic
+          - Final text: full opacity, normal weight
+        Bottom bar: Audio level meter | Mute toggle | Elapsed time
+        Auto-scrolls to latest entry during recording
+        Stop button triggers confirmation dialog: "Stop recording? Your transcript will be saved."
+      </live_session_page>
+
+      <completed_session_page>
+        Path: /session/[id] (after recording stopped)
+        Top bar: Session title | Date | Duration | Language pair | Export as MD button | Delete button
+        Main area: Same side-by-side transcript view (read-only)
+        No recording controls
+        Export button downloads .md file
+      </completed_session_page>
+
+      <settings_page>
+        Path: /settings
+        Default target language selector
+        Microphone preference
+        Theme toggle (already exists via next-themes)
+      </settings_page>
+
+      <auth_pages>
+        Path: /login, /register, /forgot-password, /reset-password (keep existing Better Auth pages)
+        Modify styling to match app branding
+      </auth_pages>
+    </pages>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      Use the existing oklch design tokens from DESIGN.md.
+      Accent additions for this app:
+      - Recording active: Red-600 oklch for pulsing dot and record button
+      - Speaker colors: Rotate through a set of 6 distinct colors for speaker labels
+        (e.g., blue, green, orange, purple, pink, teal — use oklch for consistency)
+      - Language badges: Neutral background with text color matching the target language
+      - Interim transcript: Reduced opacity (50%) and italic to distinguish from final text
+    </color_palette>
+    <typography>
+      Geist for UI text, Geist Mono for timestamps and technical elements (already configured)
+    </typography>
+    <component_style>
+      Follow shadcn/ui new-york variant styling (already configured).
+      Keep the neobrutalism touches from the existing design system.
+      Cards for session list items. Clean, minimal layout focused on readability of transcript text.
+    </component_style>
+    <animations>
+      - Recording pulse: animate-pulse on the red recording dot
+      - Transcript entry: animate-slide-in when new segments appear
+      - Audio level: smooth bar animation responding to mic input
+    </animations>
+  </design_system>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Infrastructure & Schema</title>
+      <tasks>
+        - Add session, transcript_segment, and user_settings tables to Drizzle schema
+        - Run database migration
+        - Verify database connectivity and persistence
+      </tasks>
+    </step>
+    <step number="2">
+      <title>Session Management API</title>
+      <tasks>
+        - Implement CRUD endpoints for sessions (/api/sessions)
+        - Implement settings endpoints (/api/settings)
+        - Implement export endpoint (/api/sessions/[id]/export)
+        - All endpoints require authentication
+        - Users can only access their own data
+      </tasks>
+    </step>
+    <step number="3">
+      <title>Socket.io Integration</title>
+      <tasks>
+        - Set up Socket.io server alongside Next.js (custom server or API route integration)
+        - Implement client-side Socket.io connection
+        - Define event handlers for audio-chunk, start/stop/pause/resume
+        - Handle connection/reconnection gracefully
+      </tasks>
+    </step>
+    <step number="4">
+      <title>Deepgram Integration</title>
+      <tasks>
+        - Server-side Deepgram WebSocket client (using @deepgram/sdk or direct WebSocket)
+        - Bridge: Socket.io audio chunks -> Deepgram WebSocket
+        - Parse Deepgram responses: interim results, final results, speaker diarization
+        - Forward transcript events to client via Socket.io
+        - Save final transcript segments to database
+      </tasks>
+    </step>
+    <step number="5">
+      <title>Translation via OpenRouter</title>
+      <tasks>
+        - On final transcript segment, send to OpenRouter for translation
+        - Use Vercel AI SDK (already installed) with OpenRouter provider
+        - Stream translation result back to client via Socket.io
+        - Save translated text to transcript_segment row
+        - Handle translation errors gracefully (show original text with error indicator)
+      </tasks>
+    </step>
+    <step number="6">
+      <title>Dashboard & Session List</title>
+      <tasks>
+        - Replace boilerplate dashboard with session list
+        - Session cards with metadata display
+        - New Session button and flow
+        - Empty state
+        - Session deletion with confirmation
+      </tasks>
+    </step>
+    <step number="7">
+      <title>New Session Flow</title>
+      <tasks>
+        - Session creation page: title, target language, mic selection
+        - Audio level preview
+        - Create session in database, navigate to live session page
+      </tasks>
+    </step>
+    <step number="8">
+      <title>Live Session & Transcript Display</title>
+      <tasks>
+        - Side-by-side transcript layout (original | translated)
+        - Real-time updates via Socket.io events
+        - Speaker labels with color coding
+        - Timestamps per segment
+        - Auto-scroll during recording
+        - Interim vs final text styling
+        - Recording controls: pause, stop (with confirmation), timer
+        - Audio level meter and mute toggle
+      </tasks>
+    </step>
+    <step number="9">
+      <title>Completed Session View & Export</title>
+      <tasks>
+        - Read-only transcript view for completed sessions
+        - Export as Markdown with metadata header
+        - Markdown format: # Session Title, ## Metadata, ## Transcript with speakers and timestamps
+      </tasks>
+    </step>
+    <step number="10">
+      <title>Settings & Polish</title>
+      <tasks>
+        - Settings page: default language, mic preference
+        - Landing page update (replace boilerplate marketing)
+        - Error handling throughout
+        - Responsive layout testing
+        - Dark mode support for all new components
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - Journalist can sign up, log in, and create a new transcription session
+      - Journalist can select a target language and start recording from their browser mic
+      - Real-time transcription appears with speaker labels and timestamps
+      - Real-time translation appears alongside the original transcript
+      - Journalist can pause, resume, and stop recording
+      - Completed sessions are saved and listed on the dashboard
+      - Journalist can export any session as a Markdown file
+      - Sessions are private to the user who created them
+    </functionality>
+    <user_experience>
+      - Recording starts within 2 seconds of clicking "Start Recording"
+      - Transcript appears in real-time with minimal latency
+      - Translation follows within seconds of final transcription
+      - Clear visual feedback for recording state (pulsing dot, timer, audio level)
+      - Clean, focused UI — no unnecessary features cluttering the workflow
+    </user_experience>
+    <technical_quality>
+      - No mock data — all data persisted in PostgreSQL
+      - API keys never exposed to client
+      - WebSocket connections handle reconnection gracefully
+      - TypeScript strict mode passes with no errors
+      - ESLint passes with no warnings
+    </technical_quality>
+    <design_polish>
+      - Consistent with existing shadcn/ui design system
+      - Speaker colors are visually distinct and colorblind-friendly
+      - Transcript text is highly readable (appropriate font size, line height, contrast)
+      - Recording state is immediately obvious at a glance
+      - Dark mode works correctly for all new components
+    </design_polish>
+  </success_criteria>
+</project_specification>

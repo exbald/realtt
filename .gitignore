@@ -48,3 +48,8 @@ public/uploads
 nul
 .playwright-cli/
 .playwright/
+
+# PostgreSQL data directories
+.postgres-data/
+.pgdata/
+data/db/
