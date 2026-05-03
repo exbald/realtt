@@ -449,3 +449,37 @@ TypeScript: Clean
 - Feature #8-12: Session management and recording features
 - Feature #14+: Socket.io real-time integration
 - Remaining workflow and UI features
+
+---
+
+### Feature #14: View session list sorted by date via API - PASSED ✅
+
+**What was accomplished:**
+- Verified GET /api/sessions returns authenticated user's sessions sorted by creation date descending
+- The endpoint was already correctly implemented in `src/app/api/sessions/route.ts`:
+  - Uses Drizzle ORM `orderBy(desc(transcriptionSession.createdAt))` for sorting
+  - Filters by `eq(transcriptionSession.userId, session.user.id)` for user scoping
+  - Returns 401 for unauthenticated requests
+  - Returns 500 with error message on database failures
+- Comprehensive testing confirmed all feature steps:
+
+**Verification (all 7 checks passed):**
+1. Response is JSON array: PASS ✅
+2. Sessions sorted by createdAt descending (most recent first): PASS ✅
+3. All required fields present (id, title, status, sourceLanguage, targetLanguage, durationSeconds, speakerCount, createdAt, updatedAt): PASS ✅
+4. Cross-user isolation (User 2 sees 0 sessions): PASS ✅
+5. New session appears first in list: PASS ✅
+6. Response format consistent (correct types for all fields): PASS ✅
+7. Unauthenticated access returns 401: PASS ✅
+
+**Code quality:**
+- ESLint: 0 errors in sessions route ✅
+- Mock data grep: 0 hits (no globalThis, devStore, mockDb, etc.) ✅
+- Data persists in PostgreSQL (verified via database queries) ✅
+
+**Current status:** 12/46 features passing
+
+### What to work on next:
+- Feature #8-12: Session management and recording features
+- Feature #16+: Real-time transcription features
+- Remaining workflow and UI features
