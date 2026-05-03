@@ -12,16 +12,15 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { TranscriptLayout } from "@/components/transcript-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { useSocket, ConnectionState } from "@/hooks/use-socket";
 import { useSession } from "@/lib/auth-client";
 
@@ -232,7 +231,7 @@ export default function SessionDetailPage() {
   const ConnectionIcon = connectionDisplay.icon;
 
   return (
-    <div className="container max-w-4xl mx-auto py-8 px-4">
+    <div className="container max-w-6xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
           <Button
@@ -244,7 +243,7 @@ export default function SessionDetailPage() {
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
-          <h1 className="text-3xl font-bold">{sessionData.title}</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">{sessionData.title}</h1>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExport}>
@@ -344,43 +343,11 @@ export default function SessionDetailPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Transcript</CardTitle>
-          <CardDescription>
-            {sessionData.segments?.length || 0} segments recorded
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!sessionData.segments?.length ? (
-            <p className="text-muted-foreground text-center py-8">
-              No transcript segments yet. Start recording to see transcription
-              results.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {sessionData.segments.map((segment, i) => (
-                <div key={segment.id}>
-                  {i > 0 && <Separator className="my-4" />}
-                  <div className="flex items-start gap-3">
-                    <Badge variant="outline" className="shrink-0">
-                      {segment.speakerLabel}
-                    </Badge>
-                    <div className="flex-1 space-y-1">
-                      <p>{segment.originalText}</p>
-                      {segment.translatedText && (
-                        <p className="text-muted-foreground text-sm">
-                          {segment.translatedText}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TranscriptLayout
+        segments={sessionData.segments || []}
+        sourceLanguage={sessionData.sourceLanguage}
+        targetLanguage={sessionData.targetLanguage}
+      />
     </div>
   );
 }
