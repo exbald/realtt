@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -12,6 +12,9 @@ import {
   AlertTriangle,
   Square,
   Circle,
+  Pause,
+  Play,
+  Mic,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TranscriptLayout } from "@/components/transcript-layout";
@@ -31,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAudioStreaming } from "@/hooks/use-audio-streaming";
 import { useSocket, ConnectionState } from "@/hooks/use-socket";
 import { useSession } from "@/lib/auth-client";
 
@@ -114,27 +118,25 @@ export default function SessionDetailPage() {
   // Recording state
   const [showStopDialog, setShowStopDialog] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Delete state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef<number>(0);
 
   // Socket.io connection - auto-connects when sessionId is available
   const {
     connectionState,
     isConnected,
+    socket,
     reconnectAttempts,
     transport,
     disconnect: disconnectSocket,
   } = useSocket({
     autoConnect: true,
     sessionId,
-    onConnect: (socket) => {
+    onConnect: (sock) => {
       // eslint-disable-next-line no-console
-      console.log(`[Session] Socket connected: ${socket.id}`);
+      console.log(`[Session] Socket connected: ${sock.id}`);
       toast.success("Real-time connection established");
     },
     onDisconnect: (reason) => {
@@ -154,6 +156,31 @@ export default function SessionDetailPage() {
     },
     onError: (err) => {
       console.error("[Session] Socket error:", err.message);
+    },
+  });
+
+  // Audio streaming hook
+  const {
+    recordingState,
+    chunksSent,
+    duration: streamingDuration,
+    isSupported: isMediaRecorderSupported,
+    startRecording,
+    pauseRecording,
+    resumeRecording,
+    stopRecording,
+  } = useAudioStreaming({
+    socket,
+    isConnected,
+    sessionId,
+    targetLanguage: sessionData?.targetLanguage || "en",
+    onStateChange: (state) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Session] Recording state changed: ${state}`);
+    },
+    onError: (err) => {
+      console.error("[Session] Recording error:", err.message);
+      toast.error(`Recording error: ${err.message}`);
     },
   });
 
@@ -181,48 +208,50 @@ export default function SessionDetailPage() {
     }
   }, [session?.user?.id, sessionId]);
 
-  // Timer logic for recording sessions
-  useEffect(() => {
-    const isRecording = sessionData?.status === "recording";
+  const handleStartRecording = useCallback(async () => {
+    try {
+      // Update session status to "recording" in the database
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "recording" }),
+      });
 
-    if (isRecording) {
-      // Calculate elapsed time from session creation or stored duration
-      if (elapsedSeconds === 0 && sessionData?.createdAt) {
-        const created = new Date(sessionData.createdAt).getTime();
-        const now = Date.now();
-        const elapsed = Math.floor((now - created) / 1000);
-        startTimeRef.current = now - elapsed * 1000;
-        setElapsedSeconds(elapsed);
-      } else if (startTimeRef.current === 0) {
-        startTimeRef.current = Date.now() - elapsedSeconds * 1000;
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error || "Failed to start recording");
+        return;
       }
 
-      timerRef.current = setInterval(() => {
-        const now = Date.now();
-        const elapsed = Math.floor((now - startTimeRef.current) / 1000);
-        setElapsedSeconds(elapsed);
-      }, 1000);
+      const updated = await res.json();
+      setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+
+      // Start audio streaming
+      await startRecording();
+      toast.success("Recording started");
+    } catch (err) {
+      toast.error("Failed to start recording");
     }
+  }, [sessionId, startRecording]);
 
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [sessionData?.status, sessionData?.createdAt]);
+  const handlePauseRecording = useCallback(() => {
+    pauseRecording();
+    toast.info("Recording paused");
+  }, [pauseRecording]);
 
-  // Cleanup socket on unmount
-  useEffect(() => {
-    return () => {
-      // Socket cleanup is handled by useSocket's useEffect cleanup
-    };
-  }, []);
+  const handleResumeRecording = useCallback(() => {
+    resumeRecording();
+    toast.info("Recording resumed");
+  }, [resumeRecording]);
 
   const handleStopRecording = useCallback(async () => {
     setIsStopping(true);
     try {
-      const currentDuration = elapsedSeconds;
+      // Stop audio streaming
+      await stopRecording();
+
+      // Update session status to "completed" with duration
+      const currentDuration = streamingDuration;
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -235,12 +264,7 @@ export default function SessionDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
-        // Stop the timer
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-        toast.success("Recording stopped");
+        toast.success(`Recording stopped (${chunksSent} audio chunks sent)`);
         setShowStopDialog(false);
       } else {
         const err = await res.json();
@@ -251,7 +275,7 @@ export default function SessionDetailPage() {
     } finally {
       setIsStopping(false);
     }
-  }, [sessionId, elapsedSeconds]);
+  }, [sessionId, streamingDuration, stopRecording, chunksSent]);
 
   if (isPending || !session) {
     return (
@@ -323,7 +347,9 @@ export default function SessionDetailPage() {
     return `${mins}m ${secs}s`;
   };
 
-  const isRecording = sessionData.status === "recording";
+  const isRecording = recordingState === "recording";
+  const isPaused = recordingState === "paused";
+  const isActive = isRecording || isPaused;
   const connectionDisplay = getConnectionStateDisplay(connectionState, transport);
   const ConnectionIcon = connectionDisplay.icon;
 
@@ -343,16 +369,62 @@ export default function SessionDetailPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">{sessionData.title}</h1>
         </div>
         <div className="flex gap-2">
-          {isRecording && (
+          {/* Recording Controls */}
+          {sessionData.status === "completed" && !isActive && (
             <Button
-              variant="destructive"
+              variant="default"
               size="sm"
-              onClick={() => setShowStopDialog(true)}
-              className="gap-2"
+              onClick={handleStartRecording}
+              disabled={!isConnected || !isMediaRecorderSupported}
+              className="gap-2 bg-red-600 hover:bg-red-700 text-white"
             >
-              <Square className="h-4 w-4" />
-              Stop
+              <Mic className="h-4 w-4" />
+              Record
             </Button>
+          )}
+          {isRecording && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePauseRecording}
+                className="gap-2"
+              >
+                <Pause className="h-4 w-4" />
+                Pause
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowStopDialog(true)}
+                className="gap-2"
+              >
+                <Square className="h-4 w-4" />
+                Stop
+              </Button>
+            </>
+          )}
+          {isPaused && (
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleResumeRecording}
+                className="gap-2"
+              >
+                <Play className="h-4 w-4" />
+                Resume
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowStopDialog(true)}
+                className="gap-2"
+              >
+                <Square className="h-4 w-4" />
+                Stop
+              </Button>
+            </>
           )}
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
@@ -366,31 +438,57 @@ export default function SessionDetailPage() {
       </div>
 
       {/* Recording Status Banner */}
-      {isRecording && (
-        <Card className="mb-6 border-red-200 dark:border-red-800">
+      {isActive && (
+        <Card className={`mb-6 ${isRecording ? "border-red-200 dark:border-red-800" : "border-yellow-200 dark:border-yellow-800"}`}>
           <CardContent className="py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-                </span>
-                <span className="text-sm font-semibold text-red-600 dark:text-red-400">
-                  Recording
+                {isRecording && (
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+                  </span>
+                )}
+                {isPaused && (
+                  <span className="relative flex h-3 w-3">
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500" />
+                  </span>
+                )}
+                <span className={`text-sm font-semibold ${isRecording ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400"}`}>
+                  {isRecording ? "Recording" : "Paused"}
                 </span>
                 <span className="text-2xl font-mono font-bold tabular-nums">
-                  {formatTimer(elapsedSeconds)}
+                  {formatTimer(streamingDuration)}
                 </span>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowStopDialog(true)}
-                className="gap-2"
-              >
-                <Square className="h-4 w-4" />
-                Stop Recording
-              </Button>
+              <div className="flex items-center gap-3">
+                {/* Chunk counter */}
+                <span className="text-xs text-muted-foreground">
+                  {chunksSent} chunks sent
+                </span>
+                {isRecording && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setShowStopDialog(true)}
+                    className="gap-2"
+                  >
+                    <Square className="h-4 w-4" />
+                    Stop Recording
+                  </Button>
+                )}
+                {isPaused && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleResumeRecording}
+                    className="gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    Resume Recording
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -424,12 +522,17 @@ export default function SessionDetailPage() {
             </div>
             <div className="flex items-center gap-2">
               <Badge
-                variant={sessionData.status === "recording" ? "default" : "secondary"}
+                variant={isActive ? "default" : "secondary"}
               >
-                {isRecording && (
+                {isActive && isRecording && (
                   <Circle className="h-3 w-3 mr-1 fill-current" />
                 )}
-                {sessionData.status}
+                {isActive && isPaused && (
+                  <Pause className="h-3 w-3 mr-1" />
+                )}
+                {!isActive && sessionData.status}
+                {isRecording && "Recording"}
+                {isPaused && "Paused"}
               </Badge>
             </div>
           </div>
@@ -453,6 +556,35 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
+      {/* Start Recording Banner for completed sessions */}
+      {sessionData.status === "completed" && !isActive && (
+        <Card className="mb-6 border-blue-200 dark:border-blue-800">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Mic className="h-5 w-5 text-blue-500" />
+                <div>
+                  <p className="text-sm font-medium">Session completed</p>
+                  <p className="text-xs text-muted-foreground">
+                    Click &quot;Record&quot; to start a new recording in this session
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleStartRecording}
+                disabled={!isConnected || !isMediaRecorderSupported}
+                className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Mic className="h-4 w-4" />
+                Start Recording
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Session Details</CardTitle>
@@ -462,12 +594,15 @@ export default function SessionDetailPage() {
             <div>
               <p className="text-sm text-muted-foreground">Status</p>
               <Badge
-                variant={sessionData.status === "recording" ? "default" : "secondary"}
+                variant={isActive ? "default" : "secondary"}
               >
                 {isRecording && (
                   <Circle className="h-3 w-3 mr-1 fill-current" />
                 )}
-                {sessionData.status}
+                {isPaused && (
+                  <Pause className="h-3 w-3 mr-1" />
+                )}
+                {isActive ? (isRecording ? "Recording" : "Paused") : sessionData.status}
               </Badge>
             </div>
             <div>
@@ -481,8 +616,8 @@ export default function SessionDetailPage() {
             <div>
               <p className="text-sm text-muted-foreground">Duration</p>
               <p className="font-medium">
-                {isRecording
-                  ? formatTimer(elapsedSeconds)
+                {isActive
+                  ? formatTimer(streamingDuration)
                   : formatDuration(sessionData.durationSeconds)}
               </p>
             </div>
@@ -507,7 +642,10 @@ export default function SessionDetailPage() {
           </DialogHeader>
           <div className="py-2">
             <p className="text-sm text-muted-foreground">
-              Recording duration: <span className="font-mono font-bold">{formatTimer(elapsedSeconds)}</span>
+              Recording duration: <span className="font-mono font-bold">{formatTimer(streamingDuration)}</span>
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Audio chunks sent: <span className="font-mono font-bold">{chunksSent}</span>
             </p>
           </div>
           <DialogFooter>
