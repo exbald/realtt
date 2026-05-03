@@ -1,9 +1,26 @@
+"use client";
+
 import Link from "next/link";
-import { Mic } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Mic, Plus, Settings } from "lucide-react";
 import { UserProfile } from "@/components/auth/user-profile";
+import { useSession } from "@/lib/auth-client";
+import { Button } from "./ui/button";
 import { ModeToggle } from "./ui/mode-toggle";
 
+const AUTH_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
+
 export function SiteHeader() {
+  const pathname = usePathname();
+  const { data: session } = useSession();
+
+  // Hide navigation bar on auth pages
+  if (AUTH_ROUTES.some((route) => pathname === route || pathname.startsWith(route + "/"))) {
+    return null;
+  }
+
+  const homeHref = session ? "/dashboard" : "/";
+
   return (
     <>
       {/* Skip to main content link for accessibility */}
@@ -13,14 +30,14 @@ export function SiteHeader() {
       >
         Skip to main content
       </a>
-      <header className="border-b" role="banner">
+      <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50" role="banner">
         <nav
           className="container mx-auto px-3 sm:px-4 py-3 sm:py-4 flex justify-between items-center"
           aria-label="Main navigation"
         >
           <h1 className="text-xl sm:text-2xl font-bold">
             <Link
-              href="/"
+              href={homeHref}
               className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors"
               aria-label="Real Team Translation - Go to homepage"
             >
@@ -30,12 +47,35 @@ export function SiteHeader() {
               >
                 <Mic className="h-5 w-5" />
               </div>
-              <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              <span className="hidden sm:inline bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                Real Team Translation
+              </span>
+              <span className="sm:hidden bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
                 RealTT
               </span>
             </Link>
           </h1>
-          <div className="flex items-center gap-2 sm:gap-4" role="group" aria-label="User actions">
+          <div className="flex items-center gap-2 sm:gap-3" role="group" aria-label="User actions">
+            {session && (
+              <>
+                <Button asChild variant="ghost" size="sm" className="hidden sm:flex gap-1.5">
+                  <Link href="/session/new">
+                    <Plus className="h-4 w-4" />
+                    <span className="hidden md:inline">New Session</span>
+                  </Link>
+                </Button>
+                <Button asChild variant="ghost" size="icon" className="sm:hidden">
+                  <Link href="/session/new" aria-label="New Session">
+                    <Plus className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="ghost" size="icon">
+                  <Link href="/settings" aria-label="Settings">
+                    <Settings className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            )}
             <UserProfile />
             <ModeToggle />
           </div>
