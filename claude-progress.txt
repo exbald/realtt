@@ -1,5 +1,62 @@
 # Progress Notes - Real Team Translation
 
+## Session: 2026-05-03 (Feature #20)
+
+### Feature #20: Socket.io WebSocket connection established - PASSED ✅
+
+**What was accomplished:**
+- Installed `socket.io` (4.8.3) and `socket.io-client` (4.8.3) dependencies
+- Created standalone Socket.io server (`src/lib/socket-server.ts`):
+  - Runs on port 3099 (configurable via SOCKET_PORT env var)
+  - CORS configured for localhost development
+  - Supports both WebSocket and polling transports with upgrade
+  - Handles session room join/leave events with acknowledgment
+  - Handles recording control events (start/stop/pause/resume)
+  - Proper disconnect/reconnect support with ping timeout/interval
+- Created client-side `useSocket` hook (`src/hooks/use-socket.ts`):
+  - Connection state tracking: disconnected/connecting/connected/reconnecting
+  - Transport type tracking (polling → websocket upgrade)
+  - Reconnect attempt counter
+  - Auto-join session room on connect
+  - Auto-leave session room on disconnect/cleanup
+  - Proper cleanup on component unmount (prevents memory leaks)
+  - Callback refs for onConnect/onDisconnect/onReconnect/onError
+- Integrated Socket.io into session detail page (`src/app/session/[id]/page.tsx`):
+  - Connection status banner showing state and transport type
+  - Visual indicators: green (connected), yellow (connecting), orange (reconnecting), red (disconnected)
+  - Disconnection warning card with "Connection Lost" message
+  - Auto-cleanup on navigation away from session page
+  - Toast notifications for connection established/lost/restored
+- Updated `init.sh` to start Socket.io server alongside Next.js
+- Updated `.env` and `env.example` with SOCKET_PORT and NEXT_PUBLIC_SOCKET_URL
+
+**Verification:**
+- Socket.io server test suite (6 tests): All passed
+  1. Basic connection via polling ✅
+  2. WebSocket upgrade ✅
+  3. Session join event with acknowledgment ✅
+  4. Manual disconnect and reconnect ✅
+  5. Recording status events ✅
+  6. Clean disconnect with proper reason ✅
+- E2E test (5 steps): All passed
+  1. User registration ✅
+  2. User login ✅
+  3. Session creation ✅
+  4. Session page loads ✅
+  5. Socket.io WebSocket connection + session join ✅
+- Mock data grep checks: 0 hits for globalThis, devStore, mockDb, fakeData, etc.
+- ESLint: 0 errors in new files (only console.log warnings)
+- TypeScript: 0 errors in changed files
+
+**Current status:** 11/46 features passing
+
+### What to work on next:
+- Feature #18+: Real-time audio streaming to server
+- Feature #21+: Deepgram integration for transcription
+- Feature #22+: Translation via OpenRouter
+
+---
+
 ## Session: 2026-05-03 (Feature #10)
 
 ### Feature #10: Dashboard page displays session list with metadata - PASSED ✅
