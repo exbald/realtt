@@ -34,3 +34,34 @@
 - Feature #3: Data persists across server restart
 - Feature #4: No mock data patterns in codebase
 - Feature #5: Backend API queries real database
+
+---
+
+### Feature #2: Database schema applied correctly - PASSED ✅
+
+**What was accomplished:**
+- Verified all 3 application tables exist in PostgreSQL: `transcription_session`, `transcript_segment`, `user_settings`
+- All columns verified with correct types, nullability, and defaults:
+  - `transcription_session`: id(text PK), user_id(text FK→user.id), title(text, default "Untitled Session"), status(text, default "completed"), source_language(text, default "auto-detected"), target_language(text NOT NULL), duration_seconds(integer, default 0), speaker_count(integer, default 0), created_at(timestamp), updated_at(timestamp)
+  - `transcript_segment`: id(text PK), session_id(text FK→transcription_session.id), speaker_label(text), original_text(text), translated_text(text nullable), start_time(double precision), end_time(double precision), is_final(boolean, default false), created_at(timestamp), updated_at(timestamp)
+  - `user_settings`: id(text PK), user_id(text FK→user.id UNIQUE), default_target_language(text, default "en"), selected_microphone_id(text nullable), updated_at(timestamp)
+- All indexes verified:
+  - `transcription_session_user_id_idx` on user_id
+  - `transcription_session_created_at_idx` on created_at
+  - `transcript_segment_session_id_idx` on session_id
+  - `transcript_segment_session_created_idx` on (session_id, created_at)
+  - `user_settings_user_id_idx` UNIQUE on user_id
+- All foreign key cascade deletes verified:
+  - `transcription_session.user_id → user.id ON DELETE CASCADE`
+  - `transcript_segment.session_id → transcription_session.id ON DELETE CASCADE`
+  - `user_settings.user_id → user.id ON DELETE CASCADE`
+- Started embedded PostgreSQL (created symlinks for shared libraries, initialized cluster, created postgres_dev database)
+- Pushed schema with `drizzle-kit push` - all changes applied
+- Enhanced `user_settings.user_id` index to be a unique index (per spec requirement)
+
+**Environment notes:**
+- Docker not available in sandbox - used embedded-postgres npm package instead
+- Created scripts/setup-and-start-pg.mjs for automated PG startup with library symlink setup
+- Schema was previously committed by feature #1 agent; verified working state
+
+**Current status:** 2/46 features passing
