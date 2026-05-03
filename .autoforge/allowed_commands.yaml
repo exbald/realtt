@@ -25,6 +25,8 @@ commands:
     description: Find files in filesystem
   - name: apt
     description: Package manager for installing PostgreSQL
+  - name: apt-get
+    description: Package manager for installing system dependencies
   - name: pg_config
     description: PostgreSQL configuration utility
 
