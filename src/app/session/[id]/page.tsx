@@ -235,10 +235,40 @@ export default function SessionDetailPage() {
       });
     };
 
+    // Listen for streaming translation chunks from OpenRouter
+    const handleTranslationChunk = (data: { segmentId: string; translatedText: string; isDone: boolean }) => {
+      setLiveSegments((prev) =>
+        prev.map((seg) => {
+          if (seg.id === data.segmentId) {
+            return { ...seg, translatedText: data.translatedText };
+          }
+          return seg;
+        })
+      );
+
+      // Also update sessionData segments if the segment is already saved in DB
+      if (data.isDone) {
+        setSessionData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            segments: prev.segments.map((seg) => {
+              if (seg.id === data.segmentId) {
+                return { ...seg, translatedText: data.translatedText };
+              }
+              return seg;
+            }),
+          };
+        });
+      }
+    };
+
     socket.on("transcript-segment", handleTranscriptSegment);
+    socket.on("translation-chunk", handleTranslationChunk);
 
     return () => {
       socket.off("transcript-segment", handleTranscriptSegment);
+      socket.off("translation-chunk", handleTranslationChunk);
     };
   }, [socket]);
 

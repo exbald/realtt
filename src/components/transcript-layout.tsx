@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Clock, Languages } from "lucide-react";
+import { Clock, Languages, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -221,6 +221,11 @@ export function TranscriptLayout({
                     <p className="text-sm leading-relaxed pl-1">
                       {segment.translatedText ? (
                         <span className={isInterim ? "italic" : ""}>{segment.translatedText}</span>
+                      ) : segment.isFinal ? (
+                        <span className="italic text-muted-foreground flex items-center gap-1.5">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Translating...
+                        </span>
                       ) : (
                         <span className="italic text-muted-foreground">
                           Translation pending...

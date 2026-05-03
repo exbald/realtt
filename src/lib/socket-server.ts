@@ -1,6 +1,7 @@
 import { createServer } from "http";
 import { Server as SocketIOServer, Socket } from "socket.io";
 import { DeepgramClient, DeepgramResult } from "./transcription/deepgram-client";
+import { translateSegment } from "./translation/openrouter-client";
 
 const SOCKET_PORT = parseInt(process.env.SOCKET_PORT || "3099", 10);
 
@@ -11,11 +12,18 @@ let httpServer: ReturnType<typeof createServer> | null = null;
 // Track Deepgram connections per socket
 const deepgramConnections = new Map<string, DeepgramClient>();
 
+// Track active translation streams to avoid duplicate translations
+const activeTranslations = new Set<string>();
+
 export function getIO(): SocketIOServer | null {
   return io;
 }
 
-function handleTranscriptResult(socket: Socket, result: DeepgramResult): void {
+function handleTranscriptResult(
+  socket: Socket,
+  result: DeepgramResult,
+  targetLanguage: string
+): void {
   // Emit transcript segment to the client
   socket.emit("transcript-segment", {
     id: result.id,
@@ -33,6 +41,50 @@ function handleTranscriptResult(socket: Socket, result: DeepgramResult): void {
     console.log(
       `[Deepgram] Final segment: "${result.originalText.substring(0, 50)}${result.originalText.length > 50 ? "..." : ""}" (${result.speakerLabel}, ${result.startTime.toFixed(1)}s-${result.endTime.toFixed(1)}s)`
     );
+
+    // Trigger translation for final segments
+    if (!activeTranslations.has(result.id) && targetLanguage) {
+      activeTranslations.add(result.id);
+      translateSegment(result.id, result.originalText, targetLanguage, {
+        onChunk: (segmentId, text, _isDone) => {
+          // Stream partial translation to the client
+          socket.emit("translation-chunk", {
+            segmentId,
+            translatedText: text,
+            isDone: false,
+          });
+        },
+        onComplete: (segmentId, fullText) => {
+          // Send final translation to the client
+          socket.emit("translation-chunk", {
+            segmentId,
+            translatedText: fullText,
+            isDone: true,
+          });
+          activeTranslations.delete(segmentId);
+          // eslint-disable-next-line no-console
+          console.log(
+            `[Translation] Completed segment ${segmentId}: "${fullText.substring(0, 50)}${fullText.length > 50 ? "..." : ""}"`
+          );
+        },
+        onError: (segmentId, error) => {
+          // Don't emit error for expected cases (no API key, empty text)
+          if (
+            !error.message.includes("API key not configured") &&
+            !error.message.includes("Empty text")
+          ) {
+            socket.emit("translation-error", {
+              segmentId,
+              error: error.message,
+            });
+          }
+          activeTranslations.delete(segmentId);
+        },
+      }).catch((err) => {
+        console.error("[Translation] Unhandled error:", err);
+        activeTranslations.delete(result.id);
+      });
+    }
   }
 }
 
@@ -114,7 +166,7 @@ export function startSocketServer(): Promise<SocketIOServer> {
           const deepgram = new DeepgramClient(
             data.sessionId,
             data.targetLanguage,
-            (result) => handleTranscriptResult(socket, result)
+            (result) => handleTranscriptResult(socket, result, data.targetLanguage)
           );
 
           // Store in our map
