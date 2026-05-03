@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
         userId: session.user.id,
         title: title || "Untitled Session",
         targetLanguage,
-        status: "completed",
+        status: "recording",
         sourceLanguage: "auto-detected",
         durationSeconds: 0,
         speakerCount: 0,

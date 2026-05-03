@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -10,6 +10,8 @@ import {
   WifiOff,
   Loader2,
   AlertTriangle,
+  Square,
+  Circle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TranscriptLayout } from "@/components/transcript-layout";
@@ -21,6 +23,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useSocket, ConnectionState } from "@/hooks/use-socket";
 import { useSession } from "@/lib/auth-client";
 
@@ -81,17 +91,36 @@ function getConnectionStateDisplay(state: ConnectionState, transport: string | n
   }
 }
 
+function formatTimer(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function SessionDetailPage() {
   const { data: session, isPending } = useSession();
   const router = useRouter();
   const params = useParams();
   const sessionId = params.id as string;
-  const [sessionData, setSessionData] = useState<TranscriptionSession | null>(
-    null
-  );
+  const [sessionData, setSessionData] = useState<TranscriptionSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDisconnectWarning, setShowDisconnectWarning] = useState(false);
+
+  // Recording state
+  const [showStopDialog, setShowStopDialog] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Delete state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
 
   // Socket.io connection - auto-connects when sessionId is available
   const {
@@ -152,13 +181,77 @@ export default function SessionDetailPage() {
     }
   }, [session?.user?.id, sessionId]);
 
-  // Cleanup socket on unmount (handled by useSocket hook, but also explicitly)
+  // Timer logic for recording sessions
+  useEffect(() => {
+    const isRecording = sessionData?.status === "recording";
+
+    if (isRecording) {
+      // Calculate elapsed time from session creation or stored duration
+      if (elapsedSeconds === 0 && sessionData?.createdAt) {
+        const created = new Date(sessionData.createdAt).getTime();
+        const now = Date.now();
+        const elapsed = Math.floor((now - created) / 1000);
+        startTimeRef.current = now - elapsed * 1000;
+        setElapsedSeconds(elapsed);
+      } else if (startTimeRef.current === 0) {
+        startTimeRef.current = Date.now() - elapsedSeconds * 1000;
+      }
+
+      timerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTimeRef.current) / 1000);
+        setElapsedSeconds(elapsed);
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [sessionData?.status, sessionData?.createdAt]);
+
+  // Cleanup socket on unmount
   useEffect(() => {
     return () => {
       // Socket cleanup is handled by useSocket's useEffect cleanup
-      // This is just for explicit page-level awareness
     };
   }, []);
+
+  const handleStopRecording = useCallback(async () => {
+    setIsStopping(true);
+    try {
+      const currentDuration = elapsedSeconds;
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          durationSeconds: currentDuration,
+        }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+        // Stop the timer
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        toast.success("Recording stopped");
+        setShowStopDialog(false);
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Failed to stop recording");
+      }
+    } catch {
+      toast.error("Failed to stop recording");
+    } finally {
+      setIsStopping(false);
+    }
+  }, [sessionId, elapsedSeconds]);
 
   if (isPending || !session) {
     return (
@@ -204,7 +297,7 @@ export default function SessionDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this session?")) return;
+    setIsDeleting(true);
     try {
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "DELETE",
@@ -218,6 +311,9 @@ export default function SessionDetailPage() {
       }
     } catch {
       toast.error("Failed to delete session");
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
     }
   };
 
@@ -227,6 +323,7 @@ export default function SessionDetailPage() {
     return `${mins}m ${secs}s`;
   };
 
+  const isRecording = sessionData.status === "recording";
   const connectionDisplay = getConnectionStateDisplay(connectionState, transport);
   const ConnectionIcon = connectionDisplay.icon;
 
@@ -246,16 +343,58 @@ export default function SessionDetailPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">{sessionData.title}</h1>
         </div>
         <div className="flex gap-2">
+          {isRecording && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowStopDialog(true)}
+              className="gap-2"
+            >
+              <Square className="h-4 w-4" />
+              Stop
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleDelete}>
+          <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
           </Button>
         </div>
       </div>
+
+      {/* Recording Status Banner */}
+      {isRecording && (
+        <Card className="mb-6 border-red-200 dark:border-red-800">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+                </span>
+                <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+                  Recording
+                </span>
+                <span className="text-2xl font-mono font-bold tabular-nums">
+                  {formatTimer(elapsedSeconds)}
+                </span>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowStopDialog(true)}
+                className="gap-2"
+              >
+                <Square className="h-4 w-4" />
+                Stop Recording
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Connection Status Banner */}
       <Card className="mb-6">
@@ -287,6 +426,9 @@ export default function SessionDetailPage() {
               <Badge
                 variant={sessionData.status === "recording" ? "default" : "secondary"}
               >
+                {isRecording && (
+                  <Circle className="h-3 w-3 mr-1 fill-current" />
+                )}
                 {sessionData.status}
               </Badge>
             </div>
@@ -322,6 +464,9 @@ export default function SessionDetailPage() {
               <Badge
                 variant={sessionData.status === "recording" ? "default" : "secondary"}
               >
+                {isRecording && (
+                  <Circle className="h-3 w-3 mr-1 fill-current" />
+                )}
                 {sessionData.status}
               </Badge>
             </div>
@@ -336,7 +481,9 @@ export default function SessionDetailPage() {
             <div>
               <p className="text-sm text-muted-foreground">Duration</p>
               <p className="font-medium">
-                {formatDuration(sessionData.durationSeconds)}
+                {isRecording
+                  ? formatTimer(elapsedSeconds)
+                  : formatDuration(sessionData.durationSeconds)}
               </p>
             </div>
           </div>
@@ -348,6 +495,102 @@ export default function SessionDetailPage() {
         sourceLanguage={sessionData.sourceLanguage}
         targetLanguage={sessionData.targetLanguage}
       />
+
+      {/* Stop Recording Confirmation Dialog */}
+      <Dialog open={showStopDialog} onOpenChange={setShowStopDialog}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Stop recording?</DialogTitle>
+            <DialogDescription>
+              Your transcript will be saved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground">
+              Recording duration: <span className="font-mono font-bold">{formatTimer(elapsedSeconds)}</span>
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowStopDialog(false)}
+              disabled={isStopping}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleStopRecording}
+              disabled={isStopping}
+              className="gap-2"
+            >
+              {isStopping ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Stopping...
+                </>
+              ) : (
+                <>
+                  <Square className="h-4 w-4" />
+                  Stop Recording
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Session Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete this session?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-destructive">
+                  All transcript data will be permanently deleted
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This session and all {sessionData?.segments?.length ?? 0} transcript segment{(sessionData?.segments?.length ?? 0) === 1 ? "" : "s"} will be removed and cannot be recovered.
+                </p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteDialog(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="gap-2"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete Session
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -83,3 +83,70 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Failed to delete session" }, { status: 500 });
   }
 }
+
+// PATCH /api/sessions/[id] - Update session (status, duration, etc.)
+export async function PATCH(req: NextRequest, context: RouteContext) {
+  try {
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await context.params;
+
+    // Verify ownership
+    const [sess] = await db
+      .select()
+      .from(transcriptionSession)
+      .where(
+        and(
+          eq(transcriptionSession.id, id),
+          eq(transcriptionSession.userId, session.user.id)
+        )
+      );
+
+    if (!sess) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const body = await req.json();
+    const { status, durationSeconds } = body;
+
+    // Build update object with only provided fields
+    const updates: Record<string, unknown> = {};
+    if (status !== undefined) {
+      const validStatuses = ["recording", "paused", "completed"];
+      if (!validStatuses.includes(status)) {
+        return NextResponse.json(
+          { error: "Invalid status. Must be: recording, paused, or completed" },
+          { status: 400 }
+        );
+      }
+      updates.status = status;
+    }
+    if (durationSeconds !== undefined) {
+      if (typeof durationSeconds !== "number" || durationSeconds < 0) {
+        return NextResponse.json(
+          { error: "durationSeconds must be a non-negative number" },
+          { status: 400 }
+        );
+      }
+      updates.durationSeconds = Math.round(durationSeconds);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
+    const [updated] = await db
+      .update(transcriptionSession)
+      .set(updates)
+      .where(eq(transcriptionSession.id, id))
+      .returning();
+
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error("Error updating session:", error);
+    return NextResponse.json({ error: "Failed to update session" }, { status: 500 });
+  }
+}
