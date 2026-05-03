@@ -1,5 +1,62 @@
 # Progress Notes - Real Team Translation
 
+## Session: 2026-05-03 (Feature #9)
+
+### Feature #9: API keys never exposed to client - PASSED
+
+**What was accomplished:**
+Comprehensive security audit verifying that sensitive credentials are never exposed to the browser or client-side JavaScript bundles.
+
+**Audit Results (all 9 verification steps passed):**
+
+1. **Build verification** (`pnpm run build:ci`): Build completed successfully. Searched production output for API key patterns - no sensitive values found in any client-accessible chunks.
+
+2. **Production build search**: Searched `.next/` output for:
+   - `DEEPGRAM` - Zero matches in client chunks
+   - `OPENROUTER` - Zero matches in client chunks
+   - `BETTER_AUTH_SECRET` value (`qtD4Ssa0...`) - Zero matches anywhere in build output
+   - `api_key`, `apiKey`, `Bearer ` - Zero matches in client static chunks
+   - `sk-`, `sk_live` prefix patterns - Zero matches in client chunks
+
+3. **HTML page inspection**: No API keys or sensitive values found in any generated HTML pages.
+
+4. **NEXT_PUBLIC_ environment variables** (safe - only URLs, no secrets):
+   - `NEXT_PUBLIC_APP_URL="http://localhost:3000"` - Just the app URL
+   - `NEXT_PUBLIC_SOCKET_URL="http://localhost:3099"` - Just the socket URL
+   - Neither contains API keys or secrets
+
+5. **Deepgram API key handling**: DEEPGRAM_API_KEY is referenced ONLY in:
+   - `.env` (server config file, never served)
+   - `src/lib/env.ts` (server-only schema validation)
+   - No client-side references found via grep of `src/hooks/`, `src/components/`, or any `"use client"` files
+   - Client sends audio via Socket.io to our server (which would proxy to Deepgram)
+   - Client never connects directly to Deepgram WebSocket API
+
+6. **OpenRouter API key handling**: OPENROUTER_API_KEY is referenced ONLY in:
+   - `src/lib/env.ts` (server-only, `process.env.OPENROUTER_API_KEY`)
+   - `src/app/api/chat/route.ts` (API route, server-side only, reads `process.env.OPENROUTER_API_KEY`)
+   - `src/app/api/diagnostics/route.ts` (returns `Boolean(process.env.OPENROUTER_API_KEY)` - just true/false flag, never the value)
+   - Chat endpoint verified: returns 401 for unauthenticated requests, never exposes key
+
+7. **Diagnostics endpoint security** (`/api/diagnostics`):
+   - Returns only boolean flags (true/false) for env var presence
+   - Never returns actual API key values
+   - Comment explicitly states: "only returns boolean flags about configuration status, not sensitive data"
+
+8. **Auth client** (`src/lib/auth-client.ts`): Only uses `NEXT_PUBLIC_APP_URL` (safe URL, no secrets)
+
+9. **Socket.io client** (`src/hooks/use-socket.ts`): Only connects to our own server (`NEXT_PUBLIC_SOCKET_URL`), no API keys passed in connection
+
+**Source code architecture verified:**
+- All sensitive env vars (`DEEPGRAM_API_KEY`, `OPENROUTER_API_KEY`, `BETTER_AUTH_SECRET`, `POSTGRES_URL`) are server-only
+- `env.ts` schema properly separates server (`serverEnvSchema`) and client (`clientEnvSchema`) variables
+- No `"use client"` files access sensitive env vars
+- API routes properly authenticate before any operations
+
+**Current status:** 19/46 features passing
+
+---
+
 ## Session: 2026-05-03 (Feature #16)
 
 ### Feature #16: Delete session with confirmation removes all data - PASSED
