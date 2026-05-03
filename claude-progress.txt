@@ -154,6 +154,48 @@
 
 **Current status:** 5/46 features passing
 
+---
+
+### Feature #38: Landing page displays app information and CTAs - PASSED ✅
+
+**What was accomplished:**
+- Completely rewrote `src/app/page.tsx` as the Real Team Translation landing page
+  - Hero section with "Real Team Translation" branding and Mic icon
+  - Tagline: "Real-time transcription and translation for journalists"
+  - Description paragraph explaining the app purpose
+  - "Get Started" CTA → /register (when not logged in) or "Start New Session" → /session/new (when logged in)
+  - "Sign In" link → /login (visible when not logged in)
+- Feature highlights section with 6 cards in responsive grid:
+  - Real-Time Transcription, Multi-Language Translation, Speaker Identification
+  - Session Management, Export to Markdown, Secure & Private
+- "How it works" 3-step section (Start a Session → Record & Transcribe → Export & Share)
+- Bottom CTA section encouraging sign-up
+- Updated `src/components/site-header.tsx`: Changed "Starter Kit" to "RealTT" with Mic icon
+- Updated `src/components/site-footer.tsx`: Updated footer text to app description
+- Updated `src/app/layout.tsx` metadata:
+  - Title: "Real Team Translation"
+  - Description, keywords, OG tags, Twitter card, JSON-LD structured data all updated
+  - Removed Leon van Zyl author references
+- Responsive design: Uses Tailwind breakpoints (sm, md, lg) for text sizing, grid columns, button layout
+- Dark/light mode: Works via existing ThemeProvider + CSS variables (both :root and .dark defined)
+- Uses existing design system: card-interactive hover, animate-fade-up animation, design tokens
+
+**Verification:**
+- curl http://localhost:3000 → 200, title "Real Team Translation"
+- Branding text "Real Team Translation" and "RealTT" present in HTML
+- "Get Started" and "Sign In" CTAs present with correct hrefs (/register, /login)
+- Feature highlights: "Real-Time Transcription", "Multi-Language", "Speaker Identification" all present
+- "How it works" section present
+- OG tags, meta description, JSON-LD all correct
+- /login → 200 (login page exists)
+- /register → 200 (register page exists)
+- Mock data grep → 0 hits in src/
+- TypeScript check → clean (only pre-existing .next generated type warnings)
+- Next.js build → passes cleanly
+
+**Current status:** 6/46 features passing
+
 ### What to work on next:
 - Feature #6+: Session management features
 - Socket.io integration for real-time audio/transcription
+- Remaining Navigation Integrity features
