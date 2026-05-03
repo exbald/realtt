@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Mic } from "lucide-react";
+import { ArrowLeft, Mic, Settings2 } from "lucide-react";
 import { toast } from "sonner";
+import { AudioLevelIndicator } from "@/components/audio-level-indicator";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useMicrophone } from "@/hooks/use-microphone";
 import { useSession } from "@/lib/auth-client";
 
 const LANGUAGES = [
@@ -30,7 +32,7 @@ const LANGUAGES = [
   { value: "de", label: "German" },
   { value: "it", label: "Italian" },
   { value: "pt", label: "Portuguese" },
-  { value: "zh", label: "Chinese" },
+  { value: "zh", label: "Mandarin" },
   { value: "ja", label: "Japanese" },
   { value: "ko", label: "Korean" },
   { value: "ar", label: "Arabic" },
@@ -44,6 +46,21 @@ export default function NewSessionPage() {
   const [title, setTitle] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [creating, setCreating] = useState(false);
+  const [savedMicId, setSavedMicId] = useState<string | null>(null);
+
+  const {
+    devices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+    permissionStatus,
+    isRequestingPermission,
+    audioLevel,
+    isActive,
+    requestPermission,
+    errorMessage,
+    startPreview,
+    stopPreview,
+  } = useMicrophone(savedMicId);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -51,7 +68,7 @@ export default function NewSessionPage() {
     }
   }, [isPending, session, router]);
 
-  // Load user's default target language
+  // Load user's default target language and saved microphone
   useEffect(() => {
     if (session?.user?.id) {
       fetch("/api/settings")
@@ -60,12 +77,39 @@ export default function NewSessionPage() {
           if (data.defaultTargetLanguage) {
             setTargetLanguage(data.defaultTargetLanguage);
           }
+          if (data.selectedMicrophoneId) {
+            setSavedMicId(data.selectedMicrophoneId);
+          }
         })
         .catch(() => {
           // Use defaults
         });
     }
   }, [session?.user?.id]);
+
+  // Save selected microphone to settings when it changes
+  const saveMicToSettings = useCallback(
+    async (micId: string) => {
+      try {
+        await fetch("/api/settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selectedMicrophoneId: micId }),
+        });
+      } catch {
+        // Silently fail - not critical
+      }
+    },
+    []
+  );
+
+  const handleDeviceChange = useCallback(
+    (deviceId: string) => {
+      setSelectedDeviceId(deviceId);
+      saveMicToSettings(deviceId);
+    },
+    [setSelectedDeviceId, saveMicToSettings]
+  );
 
   if (isPending || !session) {
     return (
@@ -79,6 +123,10 @@ export default function NewSessionPage() {
     if (!targetLanguage) {
       toast.error("Please select a target language");
       return;
+    }
+    // Stop preview before creating session
+    if (isActive) {
+      stopPreview();
     }
     setCreating(true);
     try {
@@ -130,16 +178,19 @@ export default function NewSessionPage() {
             Configure your transcription session before recording
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
+          {/* Session Title */}
           <div className="space-y-2">
             <Label htmlFor="title">Session Title</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter session title (optional)"
+              placeholder="Untitled Session"
             />
           </div>
+
+          {/* Target Language */}
           <div className="space-y-2">
             <Label htmlFor="target-language">Target Language</Label>
             <Select value={targetLanguage} onValueChange={setTargetLanguage}>
@@ -155,9 +206,58 @@ export default function NewSessionPage() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Microphone Selection */}
+          <div className="space-y-2">
+            <Label htmlFor="microphone-select" className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Microphone
+            </Label>
+            <Select
+              value={selectedDeviceId ?? ""}
+              onValueChange={handleDeviceChange}
+            >
+              <SelectTrigger id="microphone-select">
+                <SelectValue placeholder="Select microphone" />
+              </SelectTrigger>
+              <SelectContent>
+                {devices.length === 0 ? (
+                  <SelectItem value="no-devices" disabled>
+                    No microphones detected
+                  </SelectItem>
+                ) : (
+                  devices.map((device) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            {devices.length === 0 && permissionStatus === "prompt" && (
+              <p className="text-xs text-muted-foreground">
+                Click &quot;Test Microphone&quot; below to see available devices.
+              </p>
+            )}
+          </div>
+
+          {/* Audio Level Indicator & Permission Controls */}
+          <AudioLevelIndicator
+            audioLevel={audioLevel}
+            isActive={isActive}
+            permissionStatus={permissionStatus}
+            errorMessage={errorMessage}
+            isRequestingPermission={isRequestingPermission}
+            onRequestPermission={requestPermission}
+            onStartPreview={startPreview}
+            onStopPreview={stopPreview}
+          />
+
+          {/* Create Session Button */}
           <div className="flex justify-end pt-4">
-            <Button onClick={handleCreate} disabled={creating}>
-              {creating ? "Creating..." : "Create Session"}
+            <Button onClick={handleCreate} disabled={creating} size="lg" className="gap-2">
+              <Mic className="h-4 w-4" />
+              {creating ? "Creating..." : "Start Recording"}
             </Button>
           </div>
         </CardContent>
