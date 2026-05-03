@@ -122,7 +122,38 @@
 
 **Current status:** 4/46 features passing
 
+### Feature #5: Backend API queries real database - PASSED ✅
+
+**What was accomplished:**
+- Created GET/PATCH /api/settings routes with real Drizzle ORM queries to user_settings table
+  - GET returns defaults if no record exists (no mock data)
+  - PATCH does upsert (creates or updates settings)
+- Created GET /api/sessions/[id]/export route for Markdown export with real DB queries
+  - Fetches session + segments from PostgreSQL
+  - Generates Markdown with metadata header
+- Added optional Drizzle query logging via DRIZZLE_LOG_LEVEL env var
+- Verified ALL API endpoints execute real SQL queries against PostgreSQL:
+  - POST /api/sessions → INSERT into transcription_session ✅
+  - GET /api/sessions → SELECT from transcription_session (user-scoped) ✅
+  - GET /api/sessions/[id] → SELECT with WHERE clause + JOIN segments ✅
+  - DELETE /api/sessions/[id] → DELETE with cascade to transcript_segments ✅
+  - GET /api/settings → SELECT from user_settings ✅
+  - PATCH /api/settings → INSERT/UPDATE on user_settings ✅
+  - GET /api/sessions/[id]/export → SELECT from both tables ✅
+- Verified cross-user data isolation (user 2 cannot see user 1's data) ✅
+- Verified cascade delete works correctly ✅
+- Verified all auth checks (401 for unauthenticated requests) ✅
+- Mock data grep checks: zero hits in src/ ✅
+- TypeScript check: zero errors ✅
+
+**Verification:**
+- scripts/verify-db-queries.js → All database queries confirmed real
+- curl tests for all 7 endpoints → all return correct data from PostgreSQL
+- Cross-user test → user 2 gets empty session list, 404 for user 1's session
+- Mock data grep → 0 hits for globalThis, devStore, mockDb, fakeData, etc.
+
+**Current status:** 5/46 features passing
+
 ### What to work on next:
-- Feature #5: Backend API queries real database
 - Feature #6+: Session management features
 - Socket.io integration for real-time audio/transcription
