@@ -1,5 +1,47 @@
 # Progress Notes - Real Team Translation
 
+## Session: 2026-05-03 (Feature #8)
+
+### Feature #8: User data isolation between accounts - PASSED
+
+**What was accomplished:**
+- Verified complete data isolation between user accounts with 26 automated checks:
+  1. Registered two separate user accounts (User A and User B)
+  2. User A created session "USER_A_PRIVATE_SESSION" - confirmed creation (201)
+  3. User B's session list returns 0 sessions (User A's data NOT leaked)
+  4. User B GET /api/sessions/[session-a-id] returns 404 (not User A's data)
+  5. User B DELETE /api/sessions/[session-a-id] returns 404 (deletion denied)
+  6. User A's session still exists after User B's delete attempt
+  7. User A and User B have separate settings (fr/en defaults, different mic IDs)
+  8. User B's settings update does NOT affect User A's settings
+  9. All 5 unauthenticated access tests return 401
+
+**Security verification:**
+- All database queries in sessions API scoped by `userId` (4 queries in GET/POST/DELETE/PATCH)
+- All database queries in settings API scoped by `userId` (5 queries in GET/PATCH)
+- Export route also properly scoped by `userId`
+- No cross-user data leaks via URL manipulation
+- Unauthenticated access returns 401 on all endpoints
+- Cross-user access returns 404 (not 403 - prevents session ID enumeration)
+
+**Code review:**
+- `src/app/api/sessions/route.ts` - GET filters by userId, POST assigns userId
+- `src/app/api/sessions/[id]/route.ts` - GET/DELETE/PATCH all verify ownership via AND(userId, id)
+- `src/app/api/settings/route.ts` - GET/PATCH filter by userId, upsert scoped to user
+- `src/app/api/sessions/[id]/export/route.ts` - Exports verify ownership before generating markdown
+
+**Mock data grep:** 0 hits for globalThis, devStore, mockDb, fakeData, isDevelopment in src/
+
+**Current status:** 16/46 features passing
+
+### What to work on next:
+- Feature #9+: Session status management features
+- Feature #16+: Real-time transcription features
+- Feature #18+: Translation display features
+- Remaining workflow and UI features
+
+---
+
 ## Session: 2026-05-03 (Feature #20)
 
 ### Feature #20: Socket.io WebSocket connection established - PASSED ✅
