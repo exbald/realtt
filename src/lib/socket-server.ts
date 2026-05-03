@@ -79,6 +79,11 @@ export function startSocketServer(): Promise<SocketIOServer> {
           console.log(
             `[Socket.io] Start recording: session=${data.sessionId}, target=${data.targetLanguage}`
           );
+          // Store session info on socket for tracking
+          socket.data.sessionId = data.sessionId;
+          socket.data.targetLanguage = data.targetLanguage;
+          socket.data.isRecording = true;
+          socket.data.chunkCount = 0;
           socket.emit("recording-status", {
             status: "active",
             sessionId: data.sessionId,
@@ -86,18 +91,44 @@ export function startSocketServer(): Promise<SocketIOServer> {
         }
       );
 
+      // Handle audio chunks from client
+      socket.on("audio-chunk", (data: ArrayBuffer | { data: ArrayBuffer }, callback?: (ack: { received: boolean; chunkIndex: number }) => void) => {
+        const chunkCount = (socket.data.chunkCount || 0) + 1;
+        socket.data.chunkCount = chunkCount;
+        const sessionId = socket.data.sessionId || "unknown";
+
+        // Log every 50th chunk to avoid flooding logs
+        if (chunkCount % 50 === 0) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[Socket.io] Received chunk #${chunkCount} for session ${sessionId} (${typeof data === "object" && data instanceof ArrayBuffer ? (data as ArrayBuffer).byteLength : "unknown"} bytes)`
+          );
+        }
+
+        // Acknowledge receipt if callback is provided
+        if (typeof callback === "function") {
+          callback({ received: true, chunkIndex: chunkCount });
+        }
+      });
+
       socket.on("stop-recording", (data: { sessionId: string }) => {
         // eslint-disable-next-line no-console
-        console.log(`[Socket.io] Stop recording: session=${data.sessionId}`);
+        console.log(
+          `[Socket.io] Stop recording: session=${data.sessionId}, total chunks received: ${socket.data.chunkCount || 0}`
+        );
+        socket.data.isRecording = false;
+        socket.data.chunkCount = 0;
         socket.emit("recording-status", {
           status: "stopped",
           sessionId: data.sessionId,
+          totalChunks: socket.data.chunkCount || 0,
         });
       });
 
       socket.on("pause-recording", (data: { sessionId: string }) => {
         // eslint-disable-next-line no-console
         console.log(`[Socket.io] Pause recording: session=${data.sessionId}`);
+        socket.data.isRecording = false;
         socket.emit("recording-status", {
           status: "paused",
           sessionId: data.sessionId,
@@ -107,6 +138,7 @@ export function startSocketServer(): Promise<SocketIOServer> {
       socket.on("resume-recording", (data: { sessionId: string }) => {
         // eslint-disable-next-line no-console
         console.log(`[Socket.io] Resume recording: session=${data.sessionId}`);
+        socket.data.isRecording = true;
         socket.emit("recording-status", {
           status: "active",
           sessionId: data.sessionId,
