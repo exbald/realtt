@@ -1,3 +1,65 @@
+## Session: 2026-05-04 (Feature #43)
+
+### Feature #43: Settings form validation and defaults - PASSED ✅
+
+**What was implemented:**
+
+Added comprehensive server-side and client-side validation to the settings form, improved the "no microphone detected" UI, and ensured all form defaults and edge cases are handled correctly.
+
+**Changes Made:**
+
+1. **Server-side validation** (`src/app/api/settings/route.ts`):
+   - Added `VALID_LANGUAGES` constant with all 12 supported language codes
+   - Validates `defaultTargetLanguage` is a non-empty string when provided
+   - Returns 400 with descriptive error for invalid language codes
+   - Returns 400 for empty language codes ("Target language is required")
+   - Validates `selectedMicrophoneId` is string or null (rejects numbers/objects)
+   - Fixed import order for ESLint compliance
+
+2. **Client-side validation** (`src/app/settings/page.tsx`):
+   - Added pre-save validation: checks language is non-empty
+   - Validates language is in supported list before sending to API
+   - Shows toast.error with server error message on failed save
+   - Displays specific validation messages ("Please select a target language", "Invalid language selected")
+
+3. **"No microphone detected" UI** (`src/app/settings/page.tsx`):
+   - Replaced plain text hint with styled alert box (border, icon, muted bg)
+   - Shows "No microphone detected" prominently with bold heading
+   - Added helper text explaining how to grant microphone permission
+   - Microphone select always shows "System Default" as first option
+   - Removed duplicate "Default Microphone" option that appeared when no devices found
+
+**Test Results (33/33 tests passing):**
+
+API Validation Tests (25/25):
+- Default settings: Returns "en" for language, null for microphone ✅
+- Save valid settings: Accepts "es" and persists ✅
+- Persistence: Reload confirms saved values ✅
+- Invalid language code: Returns 400 with "Invalid language code" ✅
+- Empty language: Returns 400 with "required" ✅
+- Unauthenticated GET/PATCH: Returns 401 ✅
+- All 12 valid languages: All accepted ✅
+- Invalid microphone type: Returns 400 ✅
+- Microphone save and reset: Works correctly ✅
+
+Persistence Tests (8/8):
+- Save Korean + mic ID ✅
+- Verify saved values ✅
+- Verify after simulated reload ✅
+- Cleanup to English/null ✅
+- Verify cleanup ✅
+
+**Code quality:**
+- TypeScript: Zero errors in source files ✅
+- ESLint: Zero errors (1 import order warning) ✅
+- Mock data grep: Zero hits in src/ ✅
+- No JS console errors ✅
+
+**Current status:** 41/46 features passing (89.1%)
+
+### What to work on next:
+- Features #38, #41, #42, #44-46: Remaining features in backlog
+
 ## Session: 2026-05-04 (Feature #40)
 
 ### Feature #40: Session status transitions work correctly - PASSED ✅

@@ -137,6 +137,19 @@ export default function SettingsPage() {
 
   // Save settings to API
   const handleSave = async () => {
+    // Client-side validation: ensure target language is selected
+    if (!targetLanguage || targetLanguage.trim() === "") {
+      toast.error("Please select a target language");
+      return;
+    }
+
+    // Validate language is in the supported list
+    const validCodes = LANGUAGES.map((l) => l.value);
+    if (!validCodes.includes(targetLanguage)) {
+      toast.error("Invalid language selected. Please choose from the list.");
+      return;
+    }
+
     setSaving(true);
     try {
       const body: { defaultTargetLanguage: string; selectedMicrophoneId?: string | null } = {
@@ -156,7 +169,8 @@ export default function SettingsPage() {
       if (res.ok) {
         toast.success("Settings saved");
       } else {
-        toast.error("Failed to save settings");
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || "Failed to save settings");
       }
     } catch {
       toast.error("Failed to save settings");
@@ -248,23 +262,26 @@ export default function SettingsPage() {
                   <SelectValue placeholder="Select microphone" />
                 </SelectTrigger>
                 <SelectContent>
-                  {devices.length > 0 ? (
-                    devices.map((device) => (
-                      <SelectItem key={device.deviceId} value={device.deviceId}>
-                        {device.label}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="default">
-                      Default Microphone
+                  <SelectItem value="default">
+                    System Default
+                  </SelectItem>
+                  {devices.map((device) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label}
                     </SelectItem>
-                  )}
+                  ))}
                 </SelectContent>
               </Select>
               {devices.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Click &quot;Refresh&quot; to detect available microphones. You may need to grant microphone permission.
-                </p>
+                <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/50 p-3">
+                  <Mic className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-medium text-foreground">No microphone detected</p>
+                    <p className="text-muted-foreground text-xs mt-1">
+                      Click &quot;Refresh&quot; to detect available microphones. You may need to grant microphone permission in your browser.
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
           </CardContent>

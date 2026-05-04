@@ -1,9 +1,13 @@
+import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { userSettings } from "@/lib/schema";
-import { eq } from "drizzle-orm";
 import { createId } from "@/lib/utils";
+import { userSettings } from "@/lib/schema";
+
+// Valid language codes that the settings form supports
+const VALID_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko", "ar", "ru", "hi"];
 
 // GET /api/settings - Get current user's settings
 export async function GET(req: NextRequest) {
@@ -46,6 +50,32 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json();
     const { defaultTargetLanguage, selectedMicrophoneId } = body;
+
+    // Validate defaultTargetLanguage if provided
+    if (defaultTargetLanguage !== undefined) {
+      if (typeof defaultTargetLanguage !== "string" || defaultTargetLanguage.trim() === "") {
+        return NextResponse.json(
+          { error: "Target language is required" },
+          { status: 400 }
+        );
+      }
+      if (!VALID_LANGUAGES.includes(defaultTargetLanguage)) {
+        return NextResponse.json(
+          { error: `Invalid language code: ${defaultTargetLanguage}. Must be one of: ${VALID_LANGUAGES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate selectedMicrophoneId if provided (must be string or null)
+    if (selectedMicrophoneId !== undefined && selectedMicrophoneId !== null) {
+      if (typeof selectedMicrophoneId !== "string") {
+        return NextResponse.json(
+          { error: "Invalid microphone selection" },
+          { status: 400 }
+        );
+      }
+    }
 
     // Check if settings already exist for this user
     const [existing] = await db
