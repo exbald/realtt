@@ -1,3 +1,92 @@
+## Session: 2026-05-04 (Feature #25)
+
+### Feature #25: Auto-scroll and interim/final text styling - PASSED ✅
+
+**What was accomplished:**
+
+1. **Scrollable Transcript Container** (`src/components/transcript-layout.tsx`)
+   - Added overflow-y-auto scroll container with configurable maxHeight (default 600px)
+   - Uses forwardRef + useImperativeHandle to expose scrollToBottom() and getContainer()
+   - data-testid attribute for testing: "transcript-scroll-container"
+
+2. **Auto-scroll Behavior**
+   - Auto-scrolls to bottom when new segments arrive during active recording
+   - Tracks wasAtBottomRef to detect if user was previously at bottom
+   - Uses isAutoScrollingRef to distinguish programmatic scrolls from user scrolls
+   - requestAnimationFrame for smooth scroll timing
+   - Smooth scroll behavior (CSS `behavior: "smooth"`)
+   - Auto-scrolls when recording stops to show final state
+
+3. **Scroll-to-Bottom Indicator**
+   - Appears when user manually scrolls up while new segments arrive
+   - Shows "New entries" text with ArrowDown icon
+   - Badge showing count of new items that arrived while scrolled up
+   - Positioned at bottom center of transcript with backdrop-blur effect
+   - Clicking resumes auto-scroll and clears the indicator
+
+4. **Interim vs Final Text Styling**
+   - Interim segments: opacity-50, italic text-muted-foreground, pulse animation dot
+   - Final segments: opacity-100, font-normal text-foreground
+   - Smooth CSS transitions (transition-all duration-300 ease-in-out)
+   - Visual transition when interim segment becomes final
+   - "interim" badge with animated pulse dot on interim segments
+   - Header shows final/interim count badges separately
+
+5. **useAutoScroll Hook** (`src/hooks/use-auto-scroll.ts`)
+   - Reusable hook for scroll management
+   - Returns: scrollContainerRef, isAtBottom, showScrollToBottom, scrollToBottom, notifyContentChange
+   - Configurable threshold (default 80px from bottom)
+   - Tracks new items count when user is scrolled up
+
+6. **Session Page Updates** (`src/app/session/[id]/page.tsx`)
+   - Imports TranscriptLayoutHandle for ref type
+   - Creates transcriptRef with useRef
+   - Passes isRecording and ref to TranscriptLayout
+
+**Verification (58/58 integration tests passing):**
+1. User registration ✅
+2. User login ✅
+3. Session cookie set ✅
+4. User ID available ✅
+5. Session creation ✅
+6. Session ID returned ✅
+7. 17 segments inserted (15 final + 2 interim) ✅
+8. Session detail returns 200 ✅
+9. Session has segments array ✅
+10. Session has 17 segments ✅
+11. 15 final segments found ✅
+12. 2 interim segments found ✅
+13. Interim segment has isFinal=false ✅
+14. Interim segment has originalText ✅
+15. Interim segment has null translatedText ✅
+16. Interim segment has numeric startTime ✅
+17. Interim segment has numeric endTime ✅
+18. Interim startTime < endTime ✅
+19. Final segment has isFinal=true ✅
+20. Final segment has originalText ✅
+21. Final segment has translatedText ✅
+22. Session page returns 200 ✅
+23. Session page has JS bundles ✅
+24-33. Source code patterns verified (scroll container, overflow-y-auto, maxHeight, data-testid, scroll-to-bottom button, ArrowDown icon, newItemsCount, scroll event listener, at-bottom detection, smooth scroll) ✅
+34-43. Auto-scroll logic verified (wasAtBottomRef, isAutoScrollingRef, opacity-50/100, italic styling, normal weight, transitions, pulse, interim label, interim count badges) ✅
+44-50. Component integration verified (forwardRef, useImperativeHandle, isRecording prop, TranscriptLayoutHandle, session page imports, ref, isRecording prop) ✅
+51-55. Hook verification (useAutoScroll, notifyContentChange, showScrollToBottom, scrollToBottom, threshold) ✅
+56. No mock data patterns in src/ ✅
+57. Cross-user isolation (404) ✅
+58. Unauthenticated returns 401 ✅
+
+**Code quality:**
+- TypeScript: Zero errors in source files ✅
+- ESLint: Zero errors and zero warnings ✅
+- Mock data grep: Zero hits in src/ ✅
+
+**Current status:** 28/46 features passing
+
+### What to work on next:
+- Feature #18: Translation language selector
+- Feature #24: Translation accuracy for common phrases
+- Feature #30-46: Export, session management, and remaining features
+
 # Progress Notes - Real Team Translation
 
 ## Session: 2026-05-03 (Feature #11)
