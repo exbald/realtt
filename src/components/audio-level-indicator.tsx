@@ -38,7 +38,7 @@ export function AudioLevelIndicator({
             <Mic className="h-4 w-4 text-green-500 shrink-0" />
             <span className="text-sm text-muted-foreground">Audio Level</span>
             {isActive && (
-              <span className="inline-flex items-center gap-1 text-xs text-green-600">
+              <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
                 <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                 Live
               </span>
@@ -100,7 +100,7 @@ export function AudioLevelIndicator({
               onStartPreview();
             }}
             disabled={isRequestingPermission}
-            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 min-h-[44px]"
           >
             {isRequestingPermission ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -114,7 +114,7 @@ export function AudioLevelIndicator({
             type="button"
             onClick={onStartPreview}
             disabled={isRequestingPermission}
-            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 min-h-[44px]"
           >
             {isRequestingPermission ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -127,7 +127,7 @@ export function AudioLevelIndicator({
           <button
             type="button"
             onClick={onStopPreview}
-            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[44px]"
           >
             <MicOff className="h-4 w-4" />
             Stop Test

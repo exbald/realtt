@@ -64,25 +64,25 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="container max-w-4xl mx-auto py-8 px-4">
-      <div className="flex items-center gap-4 mb-8">
+    <div className="container max-w-4xl mx-auto py-4 sm:py-8 px-4">
+      <div className="flex items-center gap-3 mb-6 sm:mb-8">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => router.back()}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 min-h-[44px]"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <h1 className="text-3xl font-bold">Your Profile</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Your Profile</h1>
       </div>
 
       <div className="grid gap-6">
         {/* Profile Overview Card */}
         <Card>
           <CardHeader>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <Avatar className="h-20 w-20">
                 <AvatarImage
                   src={user.image || ""}
@@ -101,7 +101,7 @@ export default function ProfilePage() {
                   {user.emailVerified && (
                     <Badge
                       variant="outline"
-                      className="text-green-600 border-green-600"
+                      className="text-green-600 dark:text-green-400 border-green-600 dark:border-green-500"
                     >
                       <Shield className="h-3 w-3 mr-1" />
                       Verified
@@ -144,7 +144,7 @@ export default function ProfilePage() {
                   {user.emailVerified && (
                     <Badge
                       variant="outline"
-                      className="text-green-600 border-green-600"
+                      className="text-green-600 dark:text-green-400 border-green-600 dark:border-green-500"
                     >
                       Verified
                     </Badge>
@@ -203,7 +203,7 @@ export default function ProfilePage() {
                 </div>
                 <Badge
                   variant="outline"
-                  className="text-green-600 border-green-600"
+                  className="text-green-600 dark:text-green-400 border-green-600 dark:border-green-500"
                 >
                   Active
                 </Badge>
@@ -224,7 +224,7 @@ export default function ProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Button
                 variant="outline"
-                className="justify-start h-auto p-4"
+                className="justify-start h-auto p-4 min-h-[44px]"
                 onClick={() => setEditProfileOpen(true)}
               >
                 <User className="h-4 w-4 mr-2" />
@@ -237,7 +237,7 @@ export default function ProfilePage() {
               </Button>
               <Button
                 variant="outline"
-                className="justify-start h-auto p-4"
+                className="justify-start h-auto p-4 min-h-[44px]"
                 onClick={() => setSecurityOpen(true)}
               >
                 <Shield className="h-4 w-4 mr-2" />
@@ -250,7 +250,7 @@ export default function ProfilePage() {
               </Button>
               <Button
                 variant="outline"
-                className="justify-start h-auto p-4"
+                className="justify-start h-auto p-4 min-h-[44px]"
                 onClick={() => setEmailPrefsOpen(true)}
               >
                 <Mail className="h-4 w-4 mr-2" />
