@@ -52,8 +52,6 @@ export interface BrowserDeepgramCallbacks {
 export interface BrowserDeepgramOptions {
   language?: string;
   model?: string;
-  encoding?: string;
-  sampleRate?: number;
 }
 
 function randomId(): string {
@@ -76,8 +74,6 @@ export class BrowserDeepgramClient {
     this.opts = {
       language: options.language ?? "en",
       model: options.model ?? "nova-3",
-      encoding: options.encoding ?? "webm_opus",
-      sampleRate: options.sampleRate ?? 16000,
     };
   }
 
@@ -111,10 +107,10 @@ export class BrowserDeepgramClient {
     }
     const { key } = (await tokenRes.json()) as { key: string };
 
+    // For WebM/Opus container audio from MediaRecorder, Deepgram auto-detects
+    // encoding, sample_rate, and channels from the container header. Sending
+    // those params explicitly causes Deepgram to reject the connection.
     const params = new URLSearchParams({
-      encoding: this.opts.encoding,
-      sample_rate: String(this.opts.sampleRate),
-      channels: "1",
       diarize: "true",
       punctuate: "true",
       interim_results: "true",
