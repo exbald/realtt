@@ -15,6 +15,101 @@ const deepgramConnections = new Map<string, DeepgramClient>();
 // Track active translation streams to avoid duplicate translations
 const activeTranslations = new Set<string>();
 
+// Track translation errors per segment (segmentId -> error message)
+const translationErrors = new Map<string, string>();
+
+// Track Deepgram reconnection state per socket
+const deepgramReconnectState = new Map<string, { attempts: number; maxAttempts: number; timer: ReturnType<typeof setTimeout> | null }>();
+
+const DEEPGRAM_MAX_RECONNECT_ATTEMPTS = 3;
+const DEEPGRAM_RECONNECT_BASE_DELAY = 2000; // 2 seconds
+
+/**
+ * Map technical error messages to user-friendly messages.
+ */
+function getUserFriendlyDeepgramError(error: string): { title: string; message: string; canRetry: boolean } {
+  const lower = error.toLowerCase();
+
+  if (lower.includes("econnrefused") || lower.includes("enotfound") || lower.includes("network") || lower.includes("etimedout")) {
+    return {
+      title: "Connection Failed",
+      message: "Unable to connect to the transcription service. Please check your internet connection.",
+      canRetry: true,
+    };
+  }
+
+  if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("invalid api key") || lower.includes("authentication")) {
+    return {
+      title: "Authentication Error",
+      message: "The transcription service API key is invalid or missing. Please check your configuration.",
+      canRetry: false,
+    };
+  }
+
+  if (lower.includes("402") || lower.includes("payment") || lower.includes("quota") || lower.includes("limit exceeded") || lower.includes("insufficient")) {
+    return {
+      title: "Service Quota Exceeded",
+      message: "The transcription service quota has been exceeded. Please check your Deepgram account.",
+      canRetry: false,
+    };
+  }
+
+  if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many")) {
+    return {
+      title: "Rate Limited",
+      message: "Too many requests to the transcription service. Please wait a moment and try again.",
+      canRetry: true,
+    };
+  }
+
+  if (lower.includes("503") || lower.includes("service unavailable") || lower.includes("overloaded")) {
+    return {
+      title: "Service Unavailable",
+      message: "The transcription service is temporarily unavailable. Please try again in a moment.",
+      canRetry: true,
+    };
+  }
+
+  return {
+    title: "Transcription Error",
+    message: "An unexpected error occurred with the transcription service. Your existing transcript data is preserved.",
+    canRetry: true,
+  };
+}
+
+/**
+ * Map translation error messages to user-friendly messages.
+ */
+function getUserFriendlyTranslationError(error: string): { message: string } {
+  const lower = error.toLowerCase();
+
+  if (lower.includes("api key not configured") || lower.includes("missing") || lower.includes("no api key")) {
+    return { message: "Translation is not configured. Please set up an API key." };
+  }
+
+  if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("authentication")) {
+    return { message: "Translation service authentication failed. Please check your API key." };
+  }
+
+  if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many")) {
+    return { message: "Translation rate limit reached. The original text is preserved." };
+  }
+
+  if (lower.includes("503") || lower.includes("service unavailable") || lower.includes("overloaded")) {
+    return { message: "Translation service is temporarily unavailable. The original text is preserved." };
+  }
+
+  if (lower.includes("402") || lower.includes("payment") || lower.includes("quota") || lower.includes("insufficient")) {
+    return { message: "Translation service quota exceeded. Please check your plan." };
+  }
+
+  if (lower.includes("network") || lower.includes("econnrefused") || lower.includes("etimedout")) {
+    return { message: "Could not reach the translation service. The original text is preserved." };
+  }
+
+  return { message: "Translation failed for this segment. The original text is preserved." };
+}
+
 export function getIO(): SocketIOServer | null {
   return io;
 }
@@ -68,17 +163,19 @@ function handleTranscriptResult(
           );
         },
         onError: (segmentId, error) => {
-          // Don't emit error for expected cases (no API key, empty text)
-          if (
-            !error.message.includes("API key not configured") &&
-            !error.message.includes("Empty text")
-          ) {
-            socket.emit("translation-error", {
-              segmentId,
-              error: error.message,
-            });
-          }
+          const friendlyError = getUserFriendlyTranslationError(error.message);
+          // Always emit translation error for user feedback
+          socket.emit("translation-error", {
+            segmentId,
+            error: friendlyError.message,
+            originalError: error.message,
+          });
+          translationErrors.set(segmentId, friendlyError.message);
           activeTranslations.delete(segmentId);
+          // eslint-disable-next-line no-console
+          console.log(
+            `[Translation] Error for segment ${segmentId}: ${friendlyError.message}`
+          );
         },
       }).catch((err) => {
         console.error("[Translation] Unhandled error:", err);
@@ -162,6 +259,11 @@ export function startSocketServer(): Promise<SocketIOServer> {
           socket.data.isRecording = true;
           socket.data.chunkCount = 0;
 
+          // Clear any previous reconnection state
+          const prevReconnect = deepgramReconnectState.get(socket.id);
+          if (prevReconnect?.timer) clearTimeout(prevReconnect.timer);
+          deepgramReconnectState.delete(socket.id);
+
           // Create Deepgram connection for this session
           const deepgram = new DeepgramClient(
             data.sessionId,
@@ -179,13 +281,97 @@ export function startSocketServer(): Promise<SocketIOServer> {
               sessionId: data.sessionId,
               deepgramConnected: true,
             });
+            // Clear reconnection state on successful connect
+            deepgramReconnectState.delete(socket.id);
           }).catch((err) => {
             console.error("[Socket.io] Deepgram connection failed:", err.message);
+            const friendlyError = getUserFriendlyDeepgramError(err.message);
             socket.emit("recording-status", {
               status: "active",
               sessionId: data.sessionId,
               deepgramConnected: false,
               deepgramError: err.message,
+            });
+            // Emit user-friendly error
+            socket.emit("deepgram-error", {
+              ...friendlyError,
+              sessionId: data.sessionId,
+              reconnecting: false,
+            });
+          });
+        }
+      );
+
+      // Handle retry-recording event (client requests reconnection to Deepgram)
+      socket.on(
+        "retry-deepgram",
+        () => {
+          const sessionId = socket.data.sessionId as string;
+          const targetLanguage = socket.data.targetLanguage as string;
+
+          if (!sessionId || !targetLanguage) {
+            socket.emit("deepgram-error", {
+              title: "Cannot Retry",
+              message: "No active session found for reconnection.",
+              canRetry: false,
+              sessionId: null,
+              reconnecting: false,
+            });
+            return;
+          }
+
+          // eslint-disable-next-line no-console
+          console.log(`[Socket.io] Retrying Deepgram connection for session ${sessionId}`);
+
+          // Clean up existing connection
+          const existingDeepgram = deepgramConnections.get(socket.id);
+          if (existingDeepgram) {
+            existingDeepgram.close().catch(() => {});
+            deepgramConnections.delete(socket.id);
+          }
+
+          socket.emit("deepgram-error", {
+            title: "Reconnecting",
+            message: "Attempting to reconnect to the transcription service...",
+            canRetry: false,
+            sessionId,
+            reconnecting: true,
+          });
+
+          // Create new connection
+          const deepgram = new DeepgramClient(
+            sessionId,
+            targetLanguage,
+            (result) => handleTranscriptResult(socket, result, targetLanguage)
+          );
+          deepgramConnections.set(socket.id, deepgram);
+
+          deepgram.connect().then(() => {
+            socket.emit("recording-status", {
+              status: "active",
+              sessionId,
+              deepgramConnected: true,
+            });
+            // Notify client that reconnection succeeded
+            socket.emit("deepgram-reconnected", {
+              sessionId,
+            });
+            deepgramReconnectState.delete(socket.id);
+          }).catch((err) => {
+            console.error("[Socket.io] Deepgram retry failed:", err.message);
+            const friendlyError = getUserFriendlyDeepgramError(err.message);
+
+            // Track reconnection attempts
+            const state = deepgramReconnectState.get(socket.id) || { attempts: 0, maxAttempts: DEEPGRAM_MAX_RECONNECT_ATTEMPTS, timer: null };
+            state.attempts += 1;
+            deepgramReconnectState.set(socket.id, state);
+
+            socket.emit("deepgram-error", {
+              ...friendlyError,
+              sessionId,
+              reconnecting: false,
+              retryAttempt: state.attempts,
+              maxRetries: state.maxAttempts,
             });
           });
         }
@@ -274,6 +460,54 @@ export function startSocketServer(): Promise<SocketIOServer> {
         }
       });
 
+      // Handle retry-translation for a specific segment
+      socket.on(
+        "retry-translation",
+        (data: { segmentId: string; originalText: string; targetLanguage: string }) => {
+          if (!data.segmentId || !data.originalText || !data.targetLanguage) return;
+          if (activeTranslations.has(data.segmentId)) return; // Already translating
+
+          // eslint-disable-next-line no-console
+          console.log(`[Socket.io] Retrying translation for segment ${data.segmentId}`);
+
+          // Clear previous error
+          translationErrors.delete(data.segmentId);
+          activeTranslations.add(data.segmentId);
+
+          translateSegment(data.segmentId, data.originalText, data.targetLanguage, {
+            onChunk: (segmentId, text, _isDone) => {
+              socket.emit("translation-chunk", {
+                segmentId,
+                translatedText: text,
+                isDone: false,
+              });
+            },
+            onComplete: (segmentId, fullText) => {
+              socket.emit("translation-chunk", {
+                segmentId,
+                translatedText: fullText,
+                isDone: true,
+              });
+              activeTranslations.delete(segmentId);
+              translationErrors.delete(segmentId);
+            },
+            onError: (segmentId, error) => {
+              const friendlyError = getUserFriendlyTranslationError(error.message);
+              socket.emit("translation-error", {
+                segmentId,
+                error: friendlyError.message,
+                originalError: error.message,
+              });
+              translationErrors.set(segmentId, friendlyError.message);
+              activeTranslations.delete(segmentId);
+            },
+          }).catch((err) => {
+            console.error("[Translation] Retry error:", err);
+            activeTranslations.delete(data.segmentId);
+          });
+        }
+      );
+
       // Handle disconnect
       socket.on("disconnect", async (reason) => {
         // eslint-disable-next-line no-console
@@ -287,6 +521,11 @@ export function startSocketServer(): Promise<SocketIOServer> {
           await deepgram.close();
           deepgramConnections.delete(socket.id);
         }
+
+        // Clean up reconnection state
+        const reconnectState = deepgramReconnectState.get(socket.id);
+        if (reconnectState?.timer) clearTimeout(reconnectState.timer);
+        deepgramReconnectState.delete(socket.id);
       });
 
       // Handle errors

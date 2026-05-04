@@ -15,6 +15,8 @@ import {
   Pause,
   Play,
   Mic,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TranscriptLayout, TranscriptLayoutHandle } from "@/components/transcript-layout";
@@ -59,6 +61,22 @@ interface TranscriptionSession {
   speakerCount: number;
   createdAt: string;
   segments: TranscriptSegment[];
+}
+
+/** Deepgram service error state */
+interface DeepgramError {
+  title: string;
+  message: string;
+  canRetry: boolean;
+  reconnecting: boolean;
+  retryAttempt?: number;
+  maxRetries?: number;
+}
+
+/** Per-segment translation error state */
+interface TranslationError {
+  segmentId: string;
+  error: string;
 }
 
 function getConnectionStateDisplay(state: ConnectionState, transport: string | null) {
@@ -166,6 +184,11 @@ export default function SessionDetailPage() {
   // Real-time transcript segments (interim + final from Deepgram)
   const [liveSegments, setLiveSegments] = useState<TranscriptSegment[]>([]);
 
+  // Error states
+  const [deepgramError, setDeepgramError] = useState<DeepgramError | null>(null);
+  const [translationErrors, setTranslationErrors] = useState<Map<string, string>>(new Map());
+  const [isRetryingDeepgram, setIsRetryingDeepgram] = useState(false);
+
   // Transcript layout ref for auto-scroll
   const transcriptRef = useRef<TranscriptLayoutHandle>(null);
 
@@ -263,15 +286,56 @@ export default function SessionDetailPage() {
             }),
           };
         });
+        // Clear any previous error for this segment on success
+        setTranslationErrors((prev) => {
+          const next = new Map(prev);
+          next.delete(data.segmentId);
+          return next;
+        });
       }
+    };
+
+    // Listen for translation errors
+    const handleTranslationError = (data: TranslationError) => {
+      setTranslationErrors((prev) => {
+        const next = new Map(prev);
+        next.set(data.segmentId, data.error);
+        return next;
+      });
+    };
+
+    // Listen for Deepgram service errors
+    const handleDeepgramError = (data: DeepgramError & { sessionId?: string }) => {
+      setDeepgramError({
+        title: data.title,
+        message: data.message,
+        canRetry: data.canRetry,
+        reconnecting: data.reconnecting,
+        retryAttempt: data.retryAttempt,
+        maxRetries: data.maxRetries,
+      });
+      setIsRetryingDeepgram(data.reconnecting);
+    };
+
+    // Listen for Deepgram reconnection success
+    const handleDeepgramReconnected = () => {
+      setDeepgramError(null);
+      setIsRetryingDeepgram(false);
+      toast.success("Transcription service reconnected");
     };
 
     socket.on("transcript-segment", handleTranscriptSegment);
     socket.on("translation-chunk", handleTranslationChunk);
+    socket.on("translation-error", handleTranslationError);
+    socket.on("deepgram-error", handleDeepgramError);
+    socket.on("deepgram-reconnected", handleDeepgramReconnected);
 
     return () => {
       socket.off("transcript-segment", handleTranscriptSegment);
       socket.off("translation-chunk", handleTranslationChunk);
+      socket.off("translation-error", handleTranslationError);
+      socket.off("deepgram-error", handleDeepgramError);
+      socket.off("deepgram-reconnected", handleDeepgramReconnected);
     };
   }, [socket]);
 
@@ -394,6 +458,44 @@ export default function SessionDetailPage() {
 
     toast.info("Recording resumed");
   }, [resumeRecording, sessionId]);
+
+  // Retry Deepgram connection
+  const handleRetryDeepgram = useCallback(() => {
+    if (!socket || !isConnected) {
+      toast.error("Cannot retry: not connected to server");
+      return;
+    }
+    setIsRetryingDeepgram(true);
+    setDeepgramError((prev) => prev ? { ...prev, reconnecting: true } : prev);
+    socket.emit("retry-deepgram");
+  }, [socket, isConnected]);
+
+  // Dismiss Deepgram error
+  const handleDismissDeepgramError = useCallback(() => {
+    setDeepgramError(null);
+  }, []);
+
+  // Retry translation for a specific segment
+  const handleRetryTranslation = useCallback((segmentId: string) => {
+    if (!socket || !isConnected) return;
+    // Find the segment text
+    const mergedSegs = mergeSegments(sessionData?.segments || [], liveSegments);
+    const segment = mergedSegs.find((s) => s.id === segmentId);
+    if (!segment) return;
+
+    // Clear the error for this segment
+    setTranslationErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(segmentId);
+      return next;
+    });
+
+    socket.emit("retry-translation", {
+      segmentId,
+      originalText: segment.originalText,
+      targetLanguage: sessionData?.targetLanguage || "en",
+    });
+  }, [socket, isConnected, sessionData, liveSegments]);
 
   const handleStopRecording = useCallback(async () => {
     setIsStopping(true);
