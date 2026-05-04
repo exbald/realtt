@@ -288,7 +288,7 @@ export default function NewSessionPage() {
           {/* Target Language */}
           <div className="space-y-2">
             <Label htmlFor="target-language">Target Language</Label>
-            <Select value={targetLanguage || undefined} onValueChange={handleLanguageChange}>
+            <Select {...(targetLanguage ? { value: targetLanguage } : {})} onValueChange={handleLanguageChange}>
               <SelectTrigger
                 id="target-language"
                 aria-invalid={!!visibleErrors.targetLanguage}
@@ -319,7 +319,7 @@ export default function NewSessionPage() {
               Microphone
             </Label>
             <Select
-              value={selectedDeviceId || undefined}
+              {...(selectedDeviceId ? { value: selectedDeviceId } : {})}
               onValueChange={handleDeviceChange}
             >
               <SelectTrigger
