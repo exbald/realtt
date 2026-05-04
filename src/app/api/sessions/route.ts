@@ -44,6 +44,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (title && title.length > 200) {
+      return NextResponse.json(
+        { error: "Title must be 200 characters or less" },
+        { status: 400 }
+      );
+    }
+
     const newSession = await db
       .insert(transcriptionSession)
       .values({
