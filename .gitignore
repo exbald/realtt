@@ -53,3 +53,35 @@ nul
 .postgres-data/
 .pgdata/
 data/db/
+
+# Dev/test scripts and artifacts
+test-results/
+check_*.js
+debug_*.js
+find_*.js
+kill_*.js
+launch_*.js
+launcher*.js
+scan_*.js
+start_*.js
+start_*.sh
+_start_*.sh
+wait_*.js
+verify_*.js
+test_*.js
+test_*.mjs
+test_*.sh
+scripts/
+server_*.js
+setup_*.js
+nul
+
+# Server runtime files
+.server.log
+.server.pid
+.server.port
+.server-restart.log
+.socket-server.log
+
+# Postgres data variant
+.postgres-data-*/
