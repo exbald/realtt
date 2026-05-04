@@ -5,7 +5,7 @@ export function SiteFooter() {
         <div className="flex flex-col items-center space-y-3">
           <p>
             Real Team Translation &mdash; Real-time transcription and translation
-            for journalists
+            for every conversation
           </p>
         </div>
       </div>

@@ -33,16 +33,20 @@ export const metadata: Metadata = {
     template: "%s | Real Team Translation",
   },
   description:
-    "Real-time transcription and translation tool for journalists. Capture audio, transcribe speech with speaker identification, and translate on-the-fly.",
+    "Real-time transcription and translation for meetings, interviews, lectures, and calls. Capture audio, transcribe speech with speaker identification, and translate on the fly.",
   keywords: [
     "transcription",
     "translation",
     "real-time",
-    "journalism",
     "speech-to-text",
     "Deepgram",
     "multilingual",
     "speaker diarization",
+    "meetings",
+    "interviews",
+    "live captions",
+    "podcasts",
+    "language learning",
   ],
   openGraph: {
     type: "website",
@@ -50,13 +54,13 @@ export const metadata: Metadata = {
     siteName: "Real Team Translation",
     title: "Real Team Translation",
     description:
-      "Real-time transcription and translation tool for journalists. Capture audio, transcribe speech, and translate on-the-fly.",
+      "Real-time transcription and translation for meetings, interviews, and calls. Capture audio, transcribe speech, and translate on the fly.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Real Team Translation",
     description:
-      "Real-time transcription and translation tool for journalists.",
+      "Real-time transcription and translation for every conversation.",
   },
   robots: {
     index: true,
@@ -70,7 +74,7 @@ const jsonLd = {
   "@type": "WebApplication",
   name: "Real Team Translation",
   description:
-    "Real-time transcription and translation tool for journalists. Capture audio, transcribe speech with speaker identification, and translate on-the-fly.",
+    "Real-time transcription and translation for meetings, interviews, lectures, and calls. Capture audio, transcribe speech with speaker identification, and translate on the fly.",
   applicationCategory: "UtilitiesApplication",
   operatingSystem: "Any",
   offers: {
