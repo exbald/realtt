@@ -14,7 +14,7 @@ const pg = new EmbeddedPostgres({
 });
 
 console.log('Starting embedded PostgreSQL...');
-await pg.initialize();
+await pg.initialise();
 console.log('PostgreSQL initialized.');
 
 await pg.start();

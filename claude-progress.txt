@@ -1829,3 +1829,130 @@ Verified and fixed dark mode support across all custom components. The applicati
 
 ### What to work on next:
 - Feature #35-36, #38-46: Remaining features in backlog
+
+## Session: 2026-05-04 (Feature #36)
+
+### Feature #36: Responsive layout across desktop, tablet, and mobile - PASSED ✅
+
+**What was implemented:**
+
+Comprehensive responsive design improvements across the entire application to ensure correct rendering at desktop (1920px), tablet (768px), and mobile (375px) widths.
+
+**Changes Made:**
+
+1. **Site Header (`src/components/site-header.tsx`):**
+   - Added hamburger menu with `useState` for mobile dropdown navigation
+   - Mobile: Shows "RealTT" brand name + hamburger menu icon (Menu/X)
+   - Desktop: Shows "Real Team Translation" brand + text buttons
+   - Mobile dropdown includes: New Session, Settings, Theme toggle
+   - Touch targets: `min-w-[44px] min-h-[44px]` on hamburger button
+   - `aria-expanded` attribute for accessibility
+
+2. **Session Detail Page (`src/app/session/[id]/page.tsx`):**
+   - Header now stacks vertically: title row + action buttons row
+   - Title uses `text-xl sm:text-2xl md:text-3xl` responsive sizing with `truncate`
+   - Action buttons use `flex-wrap` to wrap on mobile
+   - All buttons have `min-h-[44px]` for touch targets
+   - Recording status banner stacks vertically on mobile (`flex-col sm:flex-row`)
+   - Button text shortened on mobile ("Stop" vs "Stop Recording")
+   - Start Recording banner also stacks vertically on mobile
+   - Connection status has `flex-wrap` for mobile
+   - Session details grid: `grid-cols-2 md:grid-cols-4`
+   - Responsive padding: `py-4 sm:py-8`, `mb-4 sm:mb-6`
+
+3. **Dashboard Page (`src/app/dashboard/page.tsx`):**
+   - Responsive title: `text-2xl sm:text-3xl`
+   - Responsive subtitle: `text-sm sm:text-base`
+   - New Session button: `min-h-[44px]`
+   - Delete button: `min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0` (mobile target, desktop normal)
+   - Session grid: `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`
+
+4. **New Session Page (`src/app/session/new/page.tsx`):**
+   - Back button: `min-h-[44px]`
+   - Create button: `min-h-[44px] w-full sm:w-auto` (full-width on mobile)
+
+5. **Settings Page (`src/app/settings/page.tsx`):**
+   - Back button: `min-h-[44px]`
+   - Save button: `min-h-[44px] w-full sm:w-auto`
+
+6. **Profile Page (`src/app/profile/page.tsx`):**
+   - Avatar layout: `flex-col sm:flex-row` (stacks on mobile)
+   - Quick action buttons: `min-h-[44px]`
+
+7. **Transcript Layout (`src/components/transcript-layout.tsx`):**
+   - Speaker info: `flex-wrap` for timestamps and labels
+   - Stats header: `flex-wrap` for badges
+   - Grid: `grid-cols-1 md:grid-cols-2` (stacks on mobile)
+
+8. **Root Layout (`src/app/layout.tsx`):**
+   - Added `Viewport` export with `width: "device-width"`, `initialScale: 1`, `maximumScale: 5`
+   - Added `themeColor` for both light and dark modes
+
+9. **Global CSS (`src/app/globals.css`):**
+   - Added `@media (pointer: coarse)` rule with `min-height: 44px` and `min-width: 44px` for all interactive elements on touch devices
+   - Added `-webkit-text-size-adjust: 100%` for mobile text rendering
+
+**Dialog Component** (already responsive):
+   - `max-w-[calc(100%-2rem)]` on mobile
+   - `sm:max-w-lg` on desktop
+   - Footer stacks with `flex-col-reverse sm:flex-row`
+
+**Verification Results:**
+- 41/41 tests passing (100%)
+- TypeScript: Zero errors in source files ✅
+- ESLint: Zero errors ✅
+- Mock data grep: Zero hits ✅
+- All pages load without JS errors ✅
+- Settings persistence verified ✅
+
+**Current status:** 35/46 features passing (76.1%)
+
+## Session: 2026-05-04 (Feature #39)
+
+### Feature #39: Session deletion cascades to transcript segments - PASSED ✅
+
+**What was verified:**
+
+The cascade deletion of transcript segments when a session is deleted was already fully implemented by previous sessions. Comprehensive verification performed with 28/28 tests passing across 4 test categories.
+
+**Verification Summary:**
+
+1. **Direct DB Cascade Test (7/7 PASS):**
+   - Created test user, session, and 6 transcript segments directly in PostgreSQL
+   - Deleted the session via SQL DELETE
+   - All 6 segments automatically cascade deleted (0 remaining)
+   - Session confirmed deleted from transcription_session table
+
+2. **FK Constraint Verification (2/2 PASS):**
+   - FK constraint exists: `transcript_segment_session_id_transcription_session_id_fk`
+   - Delete rule confirmed as CASCADE (not RESTRICT or SET NULL)
+
+3. **Source Code Verification (9/9 PASS):**
+   - DELETE handler in `src/app/api/sessions/[id]/route.ts` checks auth (401)
+   - Verifies ownership (scoped to user via userId)
+   - Returns 404 for non-existent sessions or other users' sessions
+   - Returns `{ success: true }` on successful deletion
+   - Schema in `src/lib/schema.ts` declares `onDelete: "cascade"` on sessionId FK
+
+4. **API Endpoint Tests (10/10 PASS):**
+   - Session created via POST /api/sessions
+   - 5 segments inserted via DB, confirmed via GET /api/sessions/[id] (returns segments array)
+   - DELETE /api/sessions/[id] returns 200 with `{ success: true }`
+   - GET /api/sessions/[id] returns 404 after deletion
+   - DB query confirms 0 segments remain after cascade delete
+   - Session not in GET /api/sessions list after deletion
+   - Cross-user DELETE returns 404 (ownership check)
+   - Unauthenticated DELETE returns 401
+
+**Code quality:**
+- TypeScript: Zero errors in source files ✅
+- Mock data grep: Zero hits in src/ ✅
+
+**Files verified (no changes needed):**
+- `src/app/api/sessions/[id]/route.ts` - DELETE handler with auth, ownership, cascade
+- `src/lib/schema.ts` - onDelete: "cascade" on sessionId FK
+
+**Current status:** 38/46 features passing (82.6%)
+
+### What to work on next:
+- Feature #38, #40-46: Remaining features in backlog
