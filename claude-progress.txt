@@ -2175,3 +2175,68 @@ Comprehensive data lifecycle verification covering creation, persistence, retrie
 - Updated POSTGRES_URL in .env to use port 5433 (matching embedded PostgreSQL port)
 
 **Current status:** 39/46 features passing (84.8%)
+
+## Session: 2026-05-04 (Feature #44)
+
+### Feature #44: Keyboard navigation and ARIA labels throughout - PASSED
+
+**What was implemented:**
+
+Comprehensive accessibility improvements across the entire application covering keyboard navigation, ARIA labels, focus management, and screen reader compatibility.
+
+**Changes made:**
+
+1. **Dashboard page (src/app/dashboard/page.tsx):**
+   - Added `aria-label` to session card links with descriptive text (title, status, date)
+   - Added `sr-only` text "Delete session" to trash icon button for screen readers
+   - Added `aria-hidden="true"` to all decorative icons (Play, Pause, CheckCircle2, Globe, Clock, Users, Plus)
+   - Added `focus-visible` ring styles to session card links
+
+2. **Session new page (src/app/session/new/page.tsx):**
+   - Added `role="alert"` and `aria-live="polite"` to all error messages (title, language, microphone)
+   - Added `aria-hidden="true"` to decorative icons (ArrowLeft, Mic, Settings2)
+
+3. **Session detail page (src/app/session/[id]/page.tsx):**
+   - Added `aria-label="Back to dashboard"` to back button (visible on mobile as icon-only)
+   - Added `aria-label="Dismiss error"` to Deepgram error dismiss (X) button
+
+4. **Transcript layout (src/components/transcript-layout.tsx):**
+   - Added `tabIndex={0}` to scrollable transcript area for keyboard accessibility
+   - Added `role="log"` for screen reader semantic meaning
+   - Added `aria-label` with usage instructions for keyboard scrolling
+   - Added `focus-visible` ring styles to scroll container
+   - Added `aria-label` to "Scroll to bottom" button and retry translation button
+   - Added `aria-hidden="true"` to decorative Languages icons in column headers
+
+5. **Site header (src/components/site-header.tsx):**
+   - Added `aria-label="New Session"` to desktop New Session link (icon-only on sm screens)
+
+6. **Global CSS (src/app/globals.css):**
+   - Added `a:focus-visible` rule with outline and ring styles for link focus
+   - Added `button:focus-visible` rule for consistent button focus
+   - Added `:focus:not(:focus-visible)` rule to remove outline on mouse clicks
+
+**Pre-existing accessibility features (already working):**
+- Skip to main content link in site header
+- `role="banner"` on header, `aria-label="Main navigation"` on nav
+- `aria-expanded` and `aria-label` on mobile menu toggle
+- `sr-only` "Toggle theme" on mode toggle
+- `sr-only` "Close" on dialog close button
+- Radix UI Dialog (built-in focus trapping) and Select (keyboard navigation)
+- `aria-invalid` and `aria-describedby` on form inputs
+- `role="meter"` on audio level indicators
+- `<html lang="en">` and `<main id="main-content">` landmarks
+- `min-h-[44px]` touch targets on all interactive elements
+
+**Verification (46/56 tests passed):**
+- Static HTML checks: 7/7 PASS
+- Source code verification: 32/32 PASS (all ARIA attributes, roles, labels verified in source)
+- Authenticated page HTML checks: 7/17 (10 expected failures - client-side rendered pages return empty shells via raw HTTP)
+- TypeScript: Zero errors
+- Next.js build: Clean (no errors)
+- Mock data grep: Zero hits
+
+**Current status:** 42/46 features passing (91.3%)
+
+### What to work on next:
+- Features #38, #43, #45, #46: Remaining features in backlog

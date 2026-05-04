@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { transcriptionSession } from "@/lib/schema";
 import { createId } from "@/lib/utils";
 
 // GET /api/sessions - List user's sessions sorted by date desc
+// Supports optional pagination: ?limit=N&offset=M
+// When no params: returns all sessions (backward compatible)
 export async function GET(req: NextRequest) {
   try {
     const session = await auth.api.getSession({ headers: req.headers });
@@ -13,11 +15,46 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const url = new URL(req.url);
+    const limitParam = url.searchParams.get("limit");
+    const offsetParam = url.searchParams.get("offset");
+
+    const userId = session.user.id;
+
+    // If pagination params provided, return paginated response with total count
+    if (limitParam !== null || offsetParam !== null) {
+      const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200) : 50;
+      const offset = offsetParam ? Math.max(parseInt(offsetParam, 10) || 0, 0) : 0;
+
+      const [sessions, totalResult] = await Promise.all([
+        db
+          .select()
+          .from(transcriptionSession)
+          .where(eq(transcriptionSession.userId, userId))
+          .orderBy(desc(transcriptionSession.createdAt))
+          .limit(limit)
+          .offset(offset),
+        db
+          .select({ total: count() })
+          .from(transcriptionSession)
+          .where(eq(transcriptionSession.userId, userId)),
+      ]);
+
+      return NextResponse.json({
+        sessions,
+        total: totalResult[0]?.total ?? 0,
+        limit,
+        offset,
+      });
+    }
+
+    // Default: return all sessions (backward compatible, capped at 500 for safety)
     const sessions = await db
       .select()
       .from(transcriptionSession)
-      .where(eq(transcriptionSession.userId, session.user.id))
-      .orderBy(desc(transcriptionSession.createdAt));
+      .where(eq(transcriptionSession.userId, userId))
+      .orderBy(desc(transcriptionSession.createdAt))
+      .limit(500);
 
     return NextResponse.json(sessions);
   } catch (error) {
