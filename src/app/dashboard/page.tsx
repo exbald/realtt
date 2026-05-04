@@ -260,16 +260,16 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="container max-w-6xl mx-auto py-8 px-4">
+    <div className="container max-w-6xl mx-auto py-4 sm:py-8 px-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             Your transcription sessions
           </p>
         </div>
-        <Button asChild size="lg">
+        <Button asChild size="lg" className="min-h-[44px]">
           <Link href="/session/new">
             <Plus className="h-4 w-4 mr-2" />
             New Session
@@ -315,7 +315,7 @@ export default function DashboardPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                      className="h-8 w-8 sm:h-7 sm:w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0"
                       onClick={(e) => handleDelete(s.id, e)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />

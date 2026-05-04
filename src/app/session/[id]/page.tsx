@@ -398,6 +398,12 @@ export default function SessionDetailPage() {
   }, [session?.user?.id, sessionId]);
 
   const handleStartRecording = useCallback(async () => {
+    // Guard: don't start if already recording or paused
+    if (recordingState === "recording" || recordingState === "paused") {
+      toast.info("Recording is already in progress");
+      return;
+    }
+
     try {
       // Update session status to "recording" in the database
       const res = await fetch(`/api/sessions/${sessionId}`, {
@@ -421,7 +427,7 @@ export default function SessionDetailPage() {
     } catch (err) {
       toast.error("Failed to start recording");
     }
-  }, [sessionId, startRecording]);
+  }, [sessionId, startRecording, recordingState]);
 
   const handlePauseRecording = useCallback(async () => {
     pauseRecording();
@@ -511,14 +517,15 @@ export default function SessionDetailPage() {
       // Stop audio streaming
       await stopRecording();
 
-      // Update session status to "completed" with duration
+      // Accumulate duration: add current streaming duration to existing session duration
       const currentDuration = streamingDuration;
+      const totalDuration = (sessionData?.durationSeconds ?? 0) + currentDuration;
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "completed",
-          durationSeconds: currentDuration,
+          durationSeconds: totalDuration,
         }),
       });
 
@@ -536,7 +543,7 @@ export default function SessionDetailPage() {
     } finally {
       setIsStopping(false);
     }
-  }, [sessionId, streamingDuration, stopRecording, chunksSent]);
+  }, [sessionId, streamingDuration, stopRecording, chunksSent, sessionData?.durationSeconds]);
 
   if (isPending || !session) {
     return (
@@ -659,8 +666,8 @@ export default function SessionDetailPage() {
         </div>
         {/* Action buttons row - wraps on mobile */}
         <div className="flex flex-wrap gap-2">
-          {/* Recording Controls */}
-          {sessionData.status === "completed" && !isActive && (
+          {/* Recording Controls - show Record button when no active recording */}
+          {!isActive && (
             <Button
               variant="default"
               size="sm"
@@ -946,15 +953,23 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
-      {/* Start Recording Banner for completed sessions */}
-      {sessionData.status === "completed" && !isActive && (
+      {/* Start Recording Banner for non-active sessions */}
+      {!isActive && (
         <Card className="mb-4 sm:mb-6 border-blue-200 dark:border-blue-800">
           <CardContent className="py-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3">
                 <Mic className="h-5 w-5 text-blue-500 shrink-0" />
                 <div>
-                  <p className="text-sm font-medium">Session completed</p>
+                  <p className="text-sm font-medium">
+                    {sessionData.status === "completed"
+                      ? "Session completed"
+                      : sessionData.status === "recording"
+                        ? "Ready to record"
+                        : sessionData.status === "paused"
+                          ? "Recording paused"
+                          : "Ready to record"}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Click &quot;Record&quot; to start a new recording in this session
                   </p>

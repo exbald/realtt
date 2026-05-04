@@ -152,9 +152,19 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-text-size-adjust: 100%;
   }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
+  }
+  /* Ensure minimum touch target size on mobile for interactive elements */
+  @media (pointer: coarse) {
+    button:not([class*="min-h"]),
+    a[role="button"]:not([class*="min-h"]),
+    [role="button"]:not([class*="min-h"]) {
+      min-height: 44px;
+      min-width: 44px;
+    }
   }
 }
 

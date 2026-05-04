@@ -248,7 +248,7 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
             <Languages className="h-5 w-5" />
             Transcript
           </CardTitle>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline" className="text-xs">
               {finalCount} final
             </Badge>
@@ -305,7 +305,7 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Original Column */}
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${color.bg} ${color.text} ${color.border}`}
                             >
@@ -337,7 +337,7 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
 
                         {/* Translation Column */}
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${color.bg} ${color.text} ${color.border}`}
                             >

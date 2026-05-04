@@ -174,18 +174,18 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="container max-w-2xl mx-auto py-8 px-4">
-      <div className="flex items-center gap-4 mb-8">
+    <div className="container max-w-2xl mx-auto py-4 sm:py-8 px-4">
+      <div className="flex items-center gap-3 mb-6 sm:mb-8">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => router.back()}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 min-h-[44px]"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        <h1 className="text-3xl font-bold">Settings</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Settings</h1>
       </div>
 
       <div className="grid gap-6">
@@ -271,7 +271,7 @@ export default function SettingsPage() {
         </Card>
 
         <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="min-h-[44px] w-full sm:w-auto">
             {saving ? "Saving..." : "Save Settings"}
           </Button>
         </div>
