@@ -110,15 +110,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     const body = await req.json();
-    const { status, durationSeconds } = body;
+    const { status, durationSeconds, speakerCount } = body;
 
     // Build update object with only provided fields
     const updates: Record<string, unknown> = {};
     if (status !== undefined) {
-      const validStatuses = ["recording", "paused", "completed"];
+      const validStatuses = ["created", "recording", "paused", "completed"];
       if (!validStatuses.includes(status)) {
         return NextResponse.json(
-          { error: "Invalid status. Must be: recording, paused, or completed" },
+          { error: "Invalid status. Must be: created, recording, paused, or completed" },
           { status: 400 }
         );
       }
@@ -132,6 +132,15 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         );
       }
       updates.durationSeconds = Math.round(durationSeconds);
+    }
+    if (speakerCount !== undefined) {
+      if (typeof speakerCount !== "number" || speakerCount < 0) {
+        return NextResponse.json(
+          { error: "speakerCount must be a non-negative number" },
+          { status: 400 }
+        );
+      }
+      updates.speakerCount = Math.round(speakerCount);
     }
 
     if (Object.keys(updates).length === 0) {

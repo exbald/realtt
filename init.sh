@@ -124,24 +124,9 @@ if [ -n "$PID" ]; then
 fi
 echo ""
 
-# ---- 7. Start Socket.io server ----
-SOCKET_PORT="${SOCKET_PORT:-3099}"
-echo "==> Starting Socket.io server on port $SOCKET_PORT..."
-
-# Kill any existing socket server on the port
-SPID=$(lsof -ti :$SOCKET_PORT 2>/dev/null || true)
-if [ -n "$SPID" ]; then
-  echo "    Killing existing process on port $SOCKET_PORT (PID: $SPID)..."
-  kill -9 $SPID 2>/dev/null || true
-  sleep 1
-fi
-
-npx tsx scripts/start-socket-server.ts &
-echo "    Socket.io server starting..."
-sleep 2
-echo ""
-
-# ---- 8. Start development server ----
+# ---- 7. Start development server ----
+# (No Socket.io server: the browser connects directly to Deepgram using
+#  short-lived temporary keys minted by /api/deepgram/token.)
 echo "==> Starting Next.js development server..."
 echo ""
 
@@ -158,7 +143,6 @@ for i in $(seq 1 60); do
     echo ""
     echo "  App:      http://localhost:$PORT"
     echo "  API:      http://localhost:$PORT/api/diagnostics"
-    echo "  Socket.io: ws://localhost:$SOCKET_PORT"
     echo ""
     echo "  Environment:"
     echo "    PostgreSQL: ${POSTGRES_URL:-not configured}"
@@ -167,7 +151,6 @@ for i in $(seq 1 60); do
     echo ""
     echo "  Commands:"
     echo "    Stop server:  lsof -ti :$PORT | xargs kill"
-    echo "    Stop socket:  lsof -ti :$SOCKET_PORT | xargs kill"
     echo "    View logs:    tail -f /dev/stdout"
     echo "    DB Studio:    pnpm run db:studio"
     echo "    Lint:         pnpm run check"
