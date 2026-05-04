@@ -36,8 +36,16 @@ export default function NewSessionError({
             <AlertCircle className="h-12 w-12 text-destructive" />
           </div>
           <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
+          <p className="text-muted-foreground mb-2">
+            An error occurred while setting up a new session.
+          </p>
+          {error.message && (
+            <p className="text-xs text-muted-foreground mb-4 font-mono bg-muted/50 px-3 py-2 rounded-md max-w-md mx-auto break-all">
+              {error.message}
+            </p>
+          )}
           <p className="text-muted-foreground mb-6">
-            An error occurred while setting up a new session. Please try again.
+            Please try again.
           </p>
           <div className="flex gap-3 justify-center">
             <Button onClick={reset} className="gap-2">
