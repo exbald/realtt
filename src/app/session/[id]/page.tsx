@@ -642,21 +642,23 @@ export default function SessionDetailPage() {
   const ConnectionIcon = connectionDisplay.icon;
 
   return (
-    <div className="container max-w-6xl mx-auto py-8 px-4">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
+    <div className="container max-w-6xl mx-auto py-4 sm:py-8 px-4">
+      <div className="flex flex-col gap-4 mb-6 sm:mb-8">
+        {/* Title row */}
+        <div className="flex items-center gap-3 min-w-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => router.push("/dashboard")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 shrink-0 h-9 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Button>
-          <h1 className="text-2xl sm:text-3xl font-bold">{sessionData.title}</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold truncate">{sessionData.title}</h1>
         </div>
-        <div className="flex gap-2">
+        {/* Action buttons row - wraps on mobile */}
+        <div className="flex flex-wrap gap-2">
           {/* Recording Controls */}
           {sessionData.status === "completed" && !isActive && (
             <Button
@@ -664,7 +666,7 @@ export default function SessionDetailPage() {
               size="sm"
               onClick={handleStartRecording}
               disabled={!isConnected || !isMediaRecorderSupported}
-              className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+              className="gap-2 bg-red-600 hover:bg-red-700 text-white min-h-[44px]"
             >
               <Mic className="h-4 w-4" />
               Record
@@ -676,7 +678,7 @@ export default function SessionDetailPage() {
                 variant="outline"
                 size="sm"
                 onClick={handlePauseRecording}
-                className="gap-2"
+                className="gap-2 min-h-[44px]"
               >
                 <Pause className="h-4 w-4" />
                 Pause
@@ -685,7 +687,7 @@ export default function SessionDetailPage() {
                 variant="destructive"
                 size="sm"
                 onClick={() => setShowStopDialog(true)}
-                className="gap-2"
+                className="gap-2 min-h-[44px]"
               >
                 <Square className="h-4 w-4" />
                 Stop
@@ -698,7 +700,7 @@ export default function SessionDetailPage() {
                 variant="default"
                 size="sm"
                 onClick={handleResumeRecording}
-                className="gap-2"
+                className="gap-2 min-h-[44px]"
               >
                 <Play className="h-4 w-4" />
                 Resume
@@ -707,14 +709,14 @@ export default function SessionDetailPage() {
                 variant="destructive"
                 size="sm"
                 onClick={() => setShowStopDialog(true)}
-                className="gap-2"
+                className="gap-2 min-h-[44px]"
               >
                 <Square className="h-4 w-4" />
                 Stop
               </Button>
             </>
           )}
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting}>
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting} className="min-h-[44px]">
             {isExporting ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -727,7 +729,7 @@ export default function SessionDetailPage() {
               </>
             )}
           </Button>
-          <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+          <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)} className="min-h-[44px]">
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
           </Button>
