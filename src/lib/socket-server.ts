@@ -21,6 +21,10 @@ const translationErrors = new Map<string, string>();
 // Track Deepgram reconnection state per socket
 const deepgramReconnectState = new Map<string, { attempts: number; maxAttempts: number; timer: ReturnType<typeof setTimeout> | null }>();
 
+// Track active recording sessions: sessionId -> Set<socketId>
+// Used to prevent concurrent operations and enable room broadcasting
+const activeRecordingSessions = new Map<string, Set<string>>();
+
 const DEEPGRAM_MAX_RECONNECT_ATTEMPTS = 3;
 
 /**
@@ -113,13 +117,50 @@ export function getIO(): SocketIOServer | null {
   return io;
 }
 
+/**
+ * Register a socket as actively recording for a session.
+ * Returns false if the session already has an active recording on this socket.
+ */
+function registerRecording(socketId: string, sessionId: string): boolean {
+  if (!activeRecordingSessions.has(sessionId)) {
+    activeRecordingSessions.set(sessionId, new Set());
+  }
+  const sockets = activeRecordingSessions.get(sessionId)!;
+  if (sockets.has(socketId)) {
+    return false; // Already recording on this socket
+  }
+  sockets.add(socketId);
+  return true;
+}
+
+/**
+ * Unregister a socket from active recording for a session.
+ */
+function unregisterRecording(socketId: string, sessionId: string): void {
+  const sockets = activeRecordingSessions.get(sessionId);
+  if (sockets) {
+    sockets.delete(socketId);
+    if (sockets.size === 0) {
+      activeRecordingSessions.delete(sessionId);
+    }
+  }
+}
+
+/**
+ * Check if a session has any active recordings.
+ */
+export function isSessionRecording(sessionId: string): boolean {
+  const sockets = activeRecordingSessions.get(sessionId);
+  return sockets !== undefined && sockets.size > 0;
+}
+
 function handleTranscriptResult(
   socket: Socket,
   result: DeepgramResult,
-  targetLanguage: string
+  targetLanguage: string,
+  sessionId: string
 ): void {
-  // Emit transcript segment to the client
-  socket.emit("transcript-segment", {
+  const segmentData = {
     id: result.id,
     speakerLabel: result.speakerLabel,
     originalText: result.originalText,
@@ -127,7 +168,15 @@ function handleTranscriptResult(
     startTime: result.startTime,
     endTime: result.endTime,
     isFinal: result.isFinal,
-  });
+  };
+
+  // Broadcast to the session room so all tabs receive the event
+  if (io) {
+    io.to(`session:${sessionId}`).emit("transcript-segment", segmentData);
+  } else {
+    // Fallback: emit only to originating socket
+    socket.emit("transcript-segment", segmentData);
+  }
 
   // Log significant events
   if (result.isFinal && result.originalText.trim()) {
@@ -141,20 +190,30 @@ function handleTranscriptResult(
       activeTranslations.add(result.id);
       translateSegment(result.id, result.originalText, targetLanguage, {
         onChunk: (segmentId, text, _isDone) => {
-          // Stream partial translation to the client
-          socket.emit("translation-chunk", {
+          // Stream partial translation to the session room
+          const chunkData = {
             segmentId,
             translatedText: text,
             isDone: false,
-          });
+          };
+          if (io) {
+            io.to(`session:${sessionId}`).emit("translation-chunk", chunkData);
+          } else {
+            socket.emit("translation-chunk", chunkData);
+          }
         },
         onComplete: (segmentId, fullText) => {
-          // Send final translation to the client
-          socket.emit("translation-chunk", {
+          // Send final translation to the session room
+          const chunkData = {
             segmentId,
             translatedText: fullText,
             isDone: true,
-          });
+          };
+          if (io) {
+            io.to(`session:${sessionId}`).emit("translation-chunk", chunkData);
+          } else {
+            socket.emit("translation-chunk", chunkData);
+          }
           activeTranslations.delete(segmentId);
           // eslint-disable-next-line no-console
           console.log(
@@ -163,12 +222,17 @@ function handleTranscriptResult(
         },
         onError: (segmentId, error) => {
           const friendlyError = getUserFriendlyTranslationError(error.message);
-          // Always emit translation error for user feedback
-          socket.emit("translation-error", {
+          // Always emit translation error to the session room
+          const errorData = {
             segmentId,
             error: friendlyError.message,
             originalError: error.message,
-          });
+          };
+          if (io) {
+            io.to(`session:${sessionId}`).emit("translation-error", errorData);
+          } else {
+            socket.emit("translation-error", errorData);
+          }
           translationErrors.set(segmentId, friendlyError.message);
           activeTranslations.delete(segmentId);
           // eslint-disable-next-line no-console
@@ -252,6 +316,31 @@ export function startSocketServer(): Promise<SocketIOServer> {
           console.log(
             `[Socket.io] Start recording: session=${data.sessionId}, target=${data.targetLanguage}`
           );
+
+          // Guard: prevent double-recording on the same socket
+          if (socket.data.isRecording) {
+            // eslint-disable-next-line no-console
+            console.log(
+              `[Socket.io] Double-recording prevented for socket ${socket.id} on session ${data.sessionId}`
+            );
+            socket.emit("recording-status", {
+              status: "error",
+              sessionId: data.sessionId,
+              error: "Recording is already active",
+            });
+            return;
+          }
+
+          // Register this recording session
+          if (!registerRecording(socket.id, data.sessionId)) {
+            socket.emit("recording-status", {
+              status: "error",
+              sessionId: data.sessionId,
+              error: "Recording is already active for this connection",
+            });
+            return;
+          }
+
           // Store session info on socket for tracking
           socket.data.sessionId = data.sessionId;
           socket.data.targetLanguage = data.targetLanguage;
@@ -267,7 +356,7 @@ export function startSocketServer(): Promise<SocketIOServer> {
           const deepgram = new DeepgramClient(
             data.sessionId,
             data.targetLanguage,
-            (result) => handleTranscriptResult(socket, result, data.targetLanguage),
+            (result) => handleTranscriptResult(socket, result, data.targetLanguage, data.sessionId),
             // onError: fired when Deepgram WebSocket encounters an error mid-stream
             (errorMsg) => {
               const friendlyError = getUserFriendlyDeepgramError(errorMsg);
@@ -365,7 +454,7 @@ export function startSocketServer(): Promise<SocketIOServer> {
           const deepgram = new DeepgramClient(
             sessionId,
             targetLanguage,
-            (result) => handleTranscriptResult(socket, result, targetLanguage),
+            (result) => handleTranscriptResult(socket, result, targetLanguage, sessionId),
             // onError: fired when Deepgram WebSocket encounters an error mid-stream
             (errorMsg) => {
               const friendlyError = getUserFriendlyDeepgramError(errorMsg);
@@ -461,6 +550,9 @@ export function startSocketServer(): Promise<SocketIOServer> {
         );
         socket.data.isRecording = false;
 
+        // Unregister from active recordings
+        unregisterRecording(socket.id, data.sessionId);
+
         // Close Deepgram connection and save final segments
         const deepgram = deepgramConnections.get(socket.id);
         if (deepgram) {
@@ -519,28 +611,43 @@ export function startSocketServer(): Promise<SocketIOServer> {
 
           translateSegment(data.segmentId, data.originalText, data.targetLanguage, {
             onChunk: (segmentId, text, _isDone) => {
-              socket.emit("translation-chunk", {
+              const chunkData = {
                 segmentId,
                 translatedText: text,
                 isDone: false,
-              });
+              };
+              if (io) {
+                io.to(`session:${socket.data.sessionId}`).emit("translation-chunk", chunkData);
+              } else {
+                socket.emit("translation-chunk", chunkData);
+              }
             },
             onComplete: (segmentId, fullText) => {
-              socket.emit("translation-chunk", {
+              const chunkData = {
                 segmentId,
                 translatedText: fullText,
                 isDone: true,
-              });
+              };
+              if (io) {
+                io.to(`session:${socket.data.sessionId}`).emit("translation-chunk", chunkData);
+              } else {
+                socket.emit("translation-chunk", chunkData);
+              }
               activeTranslations.delete(segmentId);
               translationErrors.delete(segmentId);
             },
             onError: (segmentId, error) => {
               const friendlyError = getUserFriendlyTranslationError(error.message);
-              socket.emit("translation-error", {
+              const errorData = {
                 segmentId,
                 error: friendlyError.message,
                 originalError: error.message,
-              });
+              };
+              if (io) {
+                io.to(`session:${socket.data.sessionId}`).emit("translation-error", errorData);
+              } else {
+                socket.emit("translation-error", errorData);
+              }
               translationErrors.set(segmentId, friendlyError.message);
               activeTranslations.delete(segmentId);
             },
@@ -557,6 +664,12 @@ export function startSocketServer(): Promise<SocketIOServer> {
         console.log(
           `[Socket.io] Client disconnected: ${socket.id} (reason: ${reason})`
         );
+
+        // Unregister from active recordings
+        const disconnectedSessionId = socket.data.sessionId as string;
+        if (disconnectedSessionId) {
+          unregisterRecording(socket.id, disconnectedSessionId);
+        }
 
         // Clean up Deepgram connection
         const deepgram = deepgramConnections.get(socket.id);

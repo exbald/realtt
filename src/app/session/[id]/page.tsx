@@ -618,6 +618,16 @@ export default function SessionDetailPage() {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
+      // Stop recording first if active, to cleanly shut down resources
+      if (isActive) {
+        try {
+          await stopRecording();
+        } catch {
+          // Recording stop failed - proceed with deletion anyway
+          console.error("[Session] Failed to stop recording before deletion");
+        }
+      }
+
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "DELETE",
       });
