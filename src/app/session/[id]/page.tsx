@@ -556,13 +556,13 @@ export default function SessionDetailPage() {
 
   if (error || !sessionData) {
     return (
-      <div className="container max-w-4xl mx-auto py-8 px-4">
-        <div className="flex items-center gap-4 mb-8">
+      <div className="container max-w-4xl mx-auto py-4 sm:py-8 px-4">
+        <div className="flex items-center gap-4 mb-6 sm:mb-8">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => router.push("/dashboard")}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 min-h-[44px]"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Dashboard
@@ -738,9 +738,9 @@ export default function SessionDetailPage() {
 
       {/* Recording Status Banner */}
       {isActive && (
-        <Card className={`mb-6 ${isRecording ? "border-red-200 dark:border-red-800" : "border-yellow-200 dark:border-yellow-800"}`}>
+        <Card className={`mb-4 sm:mb-6 ${isRecording ? "border-red-200 dark:border-red-800" : "border-yellow-200 dark:border-yellow-800"}`}>
           <CardContent className="py-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3">
                 {isRecording && (
                   <span className="relative flex h-3 w-3">
@@ -760,8 +760,8 @@ export default function SessionDetailPage() {
                   {formatTimer(streamingDuration)}
                 </span>
               </div>
-              <div className="flex items-center gap-3">
-                {/* Audio level bar */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Audio level bar - hidden on mobile, shown on sm+ */}
                 <div className="hidden sm:flex items-center gap-1.5">
                   <span className="text-xs text-muted-foreground">Level</span>
                   <div className="flex items-center gap-[2px] h-4" role="meter" aria-label="Audio input level" aria-valuenow={Math.round(audioLevel * 100)} aria-valuemin={0} aria-valuemax={100}>
@@ -793,10 +793,11 @@ export default function SessionDetailPage() {
                     variant="destructive"
                     size="sm"
                     onClick={() => setShowStopDialog(true)}
-                    className="gap-2"
+                    className="gap-2 min-h-[44px]"
                   >
                     <Square className="h-4 w-4" />
-                    Stop Recording
+                    <span className="hidden sm:inline">Stop Recording</span>
+                    <span className="sm:hidden">Stop</span>
                   </Button>
                 )}
                 {isPaused && (
@@ -804,10 +805,11 @@ export default function SessionDetailPage() {
                     variant="default"
                     size="sm"
                     onClick={handleResumeRecording}
-                    className="gap-2"
+                    className="gap-2 min-h-[44px]"
                   >
                     <Play className="h-4 w-4" />
-                    Resume Recording
+                    <span className="hidden sm:inline">Resume Recording</span>
+                    <span className="sm:hidden">Resume</span>
                   </Button>
                 )}
               </div>
@@ -817,9 +819,9 @@ export default function SessionDetailPage() {
       )}
 
       {/* Connection Status Banner */}
-      <Card className="mb-6">
+      <Card className="mb-4 sm:mb-6">
         <CardContent className="py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <ConnectionIcon
                 className={`h-4 w-4 ${connectionDisplay.color} ${
@@ -946,11 +948,11 @@ export default function SessionDetailPage() {
 
       {/* Start Recording Banner for completed sessions */}
       {sessionData.status === "completed" && !isActive && (
-        <Card className="mb-6 border-blue-200 dark:border-blue-800">
+        <Card className="mb-4 sm:mb-6 border-blue-200 dark:border-blue-800">
           <CardContent className="py-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div className="flex items-center gap-3">
-                <Mic className="h-5 w-5 text-blue-500" />
+                <Mic className="h-5 w-5 text-blue-500 shrink-0" />
                 <div>
                   <p className="text-sm font-medium">Session completed</p>
                   <p className="text-xs text-muted-foreground">
@@ -963,7 +965,7 @@ export default function SessionDetailPage() {
                 size="sm"
                 onClick={handleStartRecording}
                 disabled={!isConnected || !isMediaRecorderSupported}
-                className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+                className="gap-2 bg-red-600 hover:bg-red-700 text-white min-h-[44px] shrink-0"
               >
                 <Mic className="h-4 w-4" />
                 Start Recording
@@ -973,7 +975,7 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
-      <Card className="mb-6">
+      <Card className="mb-4 sm:mb-6">
         <CardHeader>
           <CardTitle>Session Details</CardTitle>
         </CardHeader>
