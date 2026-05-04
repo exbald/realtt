@@ -154,8 +154,21 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-text-size-adjust: 100%;
   }
+  /* Focus ring for all interactive elements */
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
+  }
+  /* Ensure links have visible focus rings */
+  a:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring rounded-sm;
+  }
+  /* Ensure custom buttons (non-component) have visible focus */
+  button:focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+  /* Remove outline on mouse click (only show for keyboard) */
+  :focus:not(:focus-visible) {
+    outline: none;
   }
   /* Ensure minimum touch target size on mobile for interactive elements */
   @media (pointer: coarse) {

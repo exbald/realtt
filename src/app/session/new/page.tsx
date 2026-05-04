@@ -237,7 +237,7 @@ export default function NewSessionPage() {
           onClick={() => router.back()}
           className="flex items-center gap-2 min-h-[44px]"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back
         </Button>
         <h1 className="text-2xl sm:text-3xl font-bold">New Session</h1>
@@ -246,7 +246,7 @@ export default function NewSessionPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Mic className="h-5 w-5" />
+            <Mic className="h-5 w-5" aria-hidden="true" />
             Start New Recording Session
           </CardTitle>
           <CardDescription>
@@ -273,7 +273,7 @@ export default function NewSessionPage() {
               className={visibleErrors.title ? "border-destructive focus-visible:ring-destructive" : ""}
             />
             {visibleErrors.title && (
-              <p id="title-error" className="text-sm text-destructive flex items-center gap-1.5">
+              <p id="title-error" role="alert" aria-live="polite" className="text-sm text-destructive flex items-center gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 {visibleErrors.title}
               </p>
@@ -305,7 +305,7 @@ export default function NewSessionPage() {
               </SelectContent>
             </Select>
             {visibleErrors.targetLanguage && (
-              <p id="language-error" className="text-sm text-destructive flex items-center gap-1.5">
+              <p id="language-error" role="alert" aria-live="polite" className="text-sm text-destructive flex items-center gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 {visibleErrors.targetLanguage}
               </p>
@@ -315,7 +315,7 @@ export default function NewSessionPage() {
           {/* Microphone Selection */}
           <div className="space-y-2">
             <Label htmlFor="microphone-select" className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4" />
+              <Settings2 className="h-4 w-4" aria-hidden="true" />
               Microphone
             </Label>
             <Select
@@ -344,7 +344,7 @@ export default function NewSessionPage() {
               </SelectContent>
             </Select>
             {visibleErrors.microphone && (
-              <p id="mic-error" className="text-sm text-destructive flex items-center gap-1.5">
+              <p id="mic-error" role="alert" aria-live="polite" className="text-sm text-destructive flex items-center gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 {visibleErrors.microphone}
               </p>
@@ -376,7 +376,7 @@ export default function NewSessionPage() {
               size="lg"
               className="gap-2 min-h-[44px] w-full sm:w-auto"
             >
-              <Mic className="h-4 w-4" />
+              <Mic className="h-4 w-4" aria-hidden="true" />
               {creating ? "Creating..." : "Start Recording"}
             </Button>
           </div>

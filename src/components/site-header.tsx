@@ -62,7 +62,7 @@ export function SiteHeader() {
               <>
                 {/* Desktop: text button */}
                 <Button asChild variant="ghost" size="sm" className="hidden sm:flex gap-1.5">
-                  <Link href="/session/new">
+                  <Link href="/session/new" aria-label="New Session">
                     <Plus className="h-4 w-4" />
                     <span className="hidden md:inline">New Session</span>
                   </Link>

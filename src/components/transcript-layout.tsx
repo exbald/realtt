@@ -265,13 +265,13 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
           {/* Column Headers */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50">
-              <Languages className="h-4 w-4 text-muted-foreground" />
+              <Languages className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <span className="text-sm font-semibold">
                 Original ({sourceLabel})
               </span>
             </div>
             <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/50">
-              <Languages className="h-4 w-4 text-muted-foreground" />
+              <Languages className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <span className="text-sm font-semibold">
                 Translation ({targetLabel})
               </span>
@@ -284,8 +284,11 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
           <div className="relative">
             <div
               ref={scrollContainerRef}
-              className="overflow-y-auto scroll-smooth"
+              className="overflow-y-auto scroll-smooth focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:rounded-sm"
               style={{ maxHeight }}
+              tabIndex={0}
+              role="log"
+              aria-label="Transcript content. Use arrow keys or page up and down to scroll."
               data-testid="transcript-scroll-container"
             >
               <div className="space-y-0">
@@ -362,6 +365,7 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
                                     <button
                                       type="button"
                                       onClick={() => onRetryTranslation(segment.id)}
+                                      aria-label={`Retry translation for ${segment.speakerLabel} at ${formatTime(segment.startTime)}`}
                                       className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline underline-offset-2 w-fit"
                                     >
                                       <RefreshCw className="h-3 w-3" />
@@ -401,6 +405,7 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
                   variant="secondary"
                   className="shadow-lg rounded-full gap-1.5 text-xs px-3 py-1.5 h-auto bg-background/90 backdrop-blur-sm border"
                   onClick={scrollToBottom}
+                  aria-label="Scroll to newest transcript entries"
                   data-testid="scroll-to-bottom-button"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />

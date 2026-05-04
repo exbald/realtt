@@ -105,21 +105,21 @@ function StatusBadge({ status }: { status: string }) {
     case "recording":
       return (
         <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800">
-          <Play className="h-3 w-3 mr-1" />
+          <Play className="h-3 w-3 mr-1" aria-hidden="true" />
           Recording
         </Badge>
       );
     case "paused":
       return (
         <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800">
-          <Pause className="h-3 w-3 mr-1" />
+          <Pause className="h-3 w-3 mr-1" aria-hidden="true" />
           Paused
         </Badge>
       );
     case "completed":
       return (
         <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
-          <CheckCircle2 className="h-3 w-3 mr-1" />
+          <CheckCircle2 className="h-3 w-3 mr-1" aria-hidden="true" />
           Completed
         </Badge>
       );
@@ -153,7 +153,7 @@ function EmptyState() {
   return (
     <Card className="border-dashed">
       <CardContent className="flex flex-col items-center justify-center py-16">
-        <div className="rounded-full bg-muted p-4 mb-4">
+        <div className="rounded-full bg-muted p-4 mb-4" aria-hidden="true">
           <Mic className="h-8 w-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-semibold mb-2">No sessions yet</h3>
@@ -163,7 +163,7 @@ function EmptyState() {
         </p>
         <Button asChild>
           <Link href="/session/new">
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
             New Session
           </Link>
         </Button>
@@ -271,7 +271,7 @@ export default function DashboardPage() {
         </div>
         <Button asChild size="lg" className="min-h-[44px]">
           <Link href="/session/new">
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
             New Session
           </Link>
         </Button>
@@ -305,8 +305,8 @@ export default function DashboardPage() {
       {!loading && !error && sessions.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sessions.map((s) => (
-            <Link key={s.id} href={`/session/${s.id}`} className="group">
-              <Card className="h-full transition-all hover:shadow-md hover:border-primary/20 group-hover:border-primary/30 cursor-pointer relative">
+            <Link key={s.id} href={`/session/${s.id}`} className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:rounded-lg" aria-label={`${s.title} session, ${s.status}, ${formatDate(s.createdAt)}`}>
+              <Card className="h-full transition-all hover:shadow-md hover:border-primary/20 group-hover:border-primary/30 group-focus-visible:border-primary/30 group-focus-visible:shadow-md cursor-pointer relative">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base font-semibold line-clamp-1 leading-tight">
@@ -319,6 +319,7 @@ export default function DashboardPage() {
                       onClick={(e) => handleDelete(s.id, e)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
+                      <span className="sr-only">Delete session</span>
                     </Button>
                   </div>
                   <CardDescription className="text-xs">
@@ -329,18 +330,18 @@ export default function DashboardPage() {
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     <StatusBadge status={s.status} />
                     <Badge variant="outline" className="text-xs font-normal">
-                      <Globe className="h-3 w-3 mr-1" />
+                      <Globe className="h-3 w-3 mr-1" aria-hidden="true" />
                       {getLangDisplay(s.sourceLanguage)} →{" "}
                       {getLangDisplay(s.targetLanguage)}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
+                      <Clock className="h-3 w-3" aria-hidden="true" />
                       {formatDuration(s.durationSeconds)}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
+                      <Users className="h-3 w-3" aria-hidden="true" />
                       {s.speakerCount}{" "}
                       {s.speakerCount === 1 ? "speaker" : "speakers"}
                     </span>

@@ -657,6 +657,7 @@ export default function SessionDetailPage() {
             variant="ghost"
             size="sm"
             onClick={() => router.push("/dashboard")}
+            aria-label="Back to dashboard"
             className="flex items-center gap-2 shrink-0 h-9 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -926,6 +927,7 @@ export default function SessionDetailPage() {
                   variant="ghost"
                   size="sm"
                   onClick={handleDismissDeepgramError}
+                  aria-label="Dismiss error"
                   className="h-7 w-7 p-0"
                 >
                   <X className="h-4 w-4" />
