@@ -2006,3 +2006,62 @@ The cascade deletion of transcript segments when a session is deleted was alread
 
 ### What to work on next:
 - Feature #38, #40-46: Remaining features in backlog
+
+## Session: 2026-05-04 (Feature #42)
+
+### Feature #42: New session form validation with clear error messages - PASSED ✅
+
+**What was implemented:**
+
+Comprehensive inline form validation for the new session page (`/session/new`) with clear, actionable error messages near each field.
+
+**Frontend Changes (src/app/session/new/page.tsx):**
+
+1. **Title Validation:**
+   - Added `MAX_TITLE_LENGTH = 200` constant
+   - Character counter showing `x/200` next to label
+   - Inline error when title exceeds 200 chars: "Title must be 200 characters or less (201/200)"
+   - Helpful hint when empty: `Leave empty for "Untitled Session"`
+   - Error appears on blur (touched state tracking)
+
+2. **Target Language Validation:**
+   - Changed default from "en" to empty string (requires user selection)
+   - Inline error on submit: "Please select a target language"
+   - Error clears immediately when language is selected
+
+3. **Microphone Validation:**
+   - Inline error for denied permission: "Microphone access denied. Please allow microphone access in your browser settings."
+   - Inline error for no devices: "No microphone detected. Please connect a microphone and refresh."
+
+4. **Form UX:**
+   - Submit button disabled when form has validation errors (after first submit attempt)
+   - All errors appear inline near the relevant field with `AlertCircle` icon
+   - Errors clear automatically when user corrects input (reactive `useMemo`)
+   - `aria-invalid` and `aria-describedby` attributes for accessibility
+   - Error IDs: `title-error`, `language-error`, `mic-error`
+   - Error styling: `border-destructive` on inputs, `text-destructive` on messages
+
+**Backend Changes (src/app/api/sessions/route.ts):**
+
+1. Added server-side title length validation: rejects titles > 200 chars with 400 status
+2. Error message: "Title must be 200 characters or less"
+
+**Verification (29/29 tests passed):**
+
+- Page structure: 11/11 (character counter, AlertCircle, aria-invalid, error IDs, placeholder, hints, styling)
+- Server-side validation: 6/6 (empty language, long title, 500+ char title, boundary tests, null language)
+- Valid creation: 4/4 (201 status, title stored, language stored, empty title default)
+- Boundary tests: 2/2 (200 chars accepted, 201 chars rejected)
+- Auth protection: 1/1 (401 for unauthenticated)
+- Error messages: 2/2 (descriptive, mention required field and character limit)
+- Persistence: 1/1 (data stored in PostgreSQL, verified via direct DB query)
+
+**Code quality:**
+- TypeScript: Zero errors in source files ✅
+- ESLint: Zero errors ✅
+- Mock data grep: Zero hits in src/ ✅
+
+**Current status:** 39/46 features passing (84.8%)
+
+### What to work on next:
+- Features #38, #40, #41, #43-46: Remaining features in backlog
