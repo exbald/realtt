@@ -1683,6 +1683,46 @@ The settings persistence feature was already fully implemented by previous sessi
 
 **Current status:** 32/46 features passing (69.6%)
 
+## Session: 2026-05-04 (Feature #34)
+
+### Feature #34: Deepgram connection error with user feedback - PASSED ✅
+
+**What was accomplished:**
+
+Verified and enhanced the Deepgram connection error handling system. The error handling infrastructure was largely built during features #28 and #30, but this session:
+
+1. **Added mid-stream disconnection detection**: The `DeepgramClient` now has `onError` and `onClose` callbacks that fire when the WebSocket connection drops during active recording (not just at connect time). The `intentionallyClosing` flag prevents false positives during graceful shutdown.
+
+2. **Wired up socket-server notifications**: The socket server now registers error/close callbacks when creating DeepgramClient instances, emitting `deepgram-error` events to the frontend when Deepgram disconnects unexpectedly mid-stream.
+
+3. **No-API-key handling**: Changed the no-API-key case in `connect()` to throw an error (instead of silently returning), ensuring the user sees "Authentication Error" rather than having transcription silently fail.
+
+4. **Mobile responsiveness**: Added 44px minimum touch targets for all action buttons on the session detail page.
+
+**Verification Summary (all 10 steps verified):**
+
+1. ✅ **Start recording with valid Deepgram** - Recording flow works end-to-end
+2. ✅ **Simulate Deepgram unavailable** - Invalid API key triggers error path; `getUserFriendlyDeepgramError()` maps 6 error categories
+3. ✅ **Clear, user-friendly error messages** - Error banner shows title (red), message, and "Your existing transcript data is preserved" note
+4. ✅ **No technical details exposed** - Error messages use generic descriptions ("Please check your configuration"), never API keys/tokens/stack traces
+5. ✅ **Existing segments preserved** - Segments persist in PostgreSQL; `mergeSegments()` combines DB + live segments
+6. ✅ **Recording controls remain functional** - Pause/Stop buttons independent of Deepgram error state
+7. ✅ **Retry/reconnect option available** - Retry button in error banner; `retry-deepgram` event handler with max 3 attempts
+8. ✅ **Reconnection resumes transcription** - `deepgram-reconnected` event clears error state and restores service
+9. ✅ **Errors logged server-side** - 5 `console.error` calls in socket-server for connection failures, retry failures, and translation errors
+10. ✅ **Session status remains accurate** - Status managed via PATCH to API, independent of Deepgram state
+
+**Code quality:**
+- TypeScript: Zero errors in src/ ✅
+- ESLint: Zero errors in changed files ✅
+- Mock data grep: Zero hits in src/ ✅
+
+**Files changed:**
+- `src/lib/transcription/deepgram-client.ts` - Added `onErrorCallback`, `onCloseCallback`, `intentionallyClosing` flag; throw on missing API key
+- `src/lib/socket-server.ts` - Wired up error/close callbacks on both initial connect and retry
+- `src/app/session/[id]/page.tsx` - Mobile touch target improvements (44px min-height)
+
+**Current status:** 33/46 features passing (71.7%)
+
 ### What to work on next:
-- Feature #30: Export transcript as Markdown
-- Feature #31-46: Remaining features in backlog
+- Feature #35-46: Remaining features (session management, advanced error cases)
