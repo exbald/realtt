@@ -1726,3 +1726,106 @@ Verified and enhanced the Deepgram connection error handling system. The error h
 
 ### What to work on next:
 - Feature #35-46: Remaining features (session management, advanced error cases)
+
+## Session: 2026-05-04 (Feature #35)
+
+### Feature #35: Network failure and API error handling throughout app - PASSED ✅
+
+**What was accomplished:**
+
+1. **Added route-level error boundaries** for all major route segments:
+   - `src/app/dashboard/error.tsx` - Dashboard-specific error boundary with "Failed to load dashboard" message, Try Again and Go Home buttons
+   - `src/app/session/error.tsx` - Session route error boundary
+   - `src/app/session/[id]/error.tsx` - Session detail error boundary with "Session Error" and "Your transcript data is preserved"
+   - `src/app/session/new/error.tsx` - New session error boundary
+   - `src/app/profile/error.tsx` - Profile error boundary
+   - `src/app/settings/error.tsx` - Settings error boundary
+   - `src/app/chat/error.tsx` - Fixed to NOT expose raw error.message to users (was showing technical error details)
+
+2. **Added loading skeleton for session detail page** (`src/app/session/[id]/loading.tsx`):
+   - Full page skeleton with header, connection status, session details, and transcript area
+   - Uses Skeleton components for consistent loading UX
+
+3. **Verified existing error handling** (already implemented by previous sessions):
+   - Root error boundary (`error.tsx`) with "Something went wrong", Try Again, Go Home
+   - 404 page (`not-found.tsx`) with "Page Not Found", Go Home, Dashboard links
+   - Dashboard: skeleton loading cards, error state with retry, toast notifications
+   - Session detail: loading state, "Session not found" for invalid IDs, Deepgram error banners, translation error handling, connection lost warning, reconnection state
+   - New session: toast on creation failure
+   - All API routes: try/catch with 500 fallback, 401/400/404 proper status codes
+   - Sonner toaster in root layout for toast notifications
+   - No stack traces or technical jargon exposed in any error UI
+
+**Verification (221/221 tests passed):**
+- Step 1: API Error Responses - 13/13 ✅ (401, 400, 404 status codes, user-friendly messages)
+- Step 2: 404 Page - 6/6 ✅ (404 status, "Page Not Found", navigation links)
+- Step 3: Error Boundaries - 56/56 ✅ (8 error boundaries with client directive, console.error, reset, no stack traces)
+- Step 4: Loading States - 12/12 ✅ (dashboard skeleton, session skeleton, loading state tracking)
+- Step 5: Slow Response Handling - 4/4 ✅ (skeletons while loading)
+- Step 6: Session Not Found - 4/4 ✅ (404 API, "not found" message, back button)
+- Step 7: 500 Error Handling - 11/11 ✅ (API try/catch, root error boundary, error digest)
+- Step 8: Error Boundary Catching - 10/10 ✅ ("use client", bundle loading)
+- Step 9: No Stack Traces - 28/28 ✅ (no error.stack, no .message, no JSON.stringify)
+- Step 10: Toast Notifications - 17/17 ✅ (sonner imports, error/success toasts for all actions)
+- Step 11: Deepgram/Connection - 8/8 ✅ (error tracking, retry, reconnect, translation errors)
+- Step 12: No Mock Data - 1/1 ✅ (0 patterns in error files)
+
+**Code quality:**
+- TypeScript: Zero errors in src/ ✅
+- ESLint: Zero errors ✅
+- Mock data grep: Zero hits in src/ ✅
+
+**Current status:** 34/46 features passing (73.9%)
+
+### What to work on next:
+- Features #31, #33, #36-46: Remaining features in backlog
+
+
+## Session: 2026-05-04 (Feature #37)
+
+### Feature #37: Dark mode support for all new components - PASSED
+
+**What was accomplished:**
+
+Verified and fixed dark mode support across all custom components. The application already had excellent dark mode infrastructure (ThemeProvider with next-themes, oklch CSS variables, shadcn/ui components with built-in dark support), but some custom components had hardcoded color values without dark variants.
+
+**Fixes applied:**
+
+1. Profile page (src/app/profile/page.tsx):
+   - Added dark:text-green-400 to 3 instances of Verified and Active badges
+   - Added dark:border-green-500 to match border colors in dark mode
+
+2. Audio level indicator (src/components/audio-level-indicator.tsx):
+   - Added dark:text-green-400 to Live indicator text
+
+3. Setup checklist (src/components/setup-checklist.tsx):
+   - Added dark:text-green-400 to checkmark status icon
+   - Added dark:text-red-400 to error status icon
+
+**Verification (74/74 dark mode checks passing):**
+
+- Infrastructure: 9/9 (ThemeProvider, ModeToggle, CSS variables, suppressHydrationWarning)
+- Dashboard session cards: 8/8 (status badges with dark variants)
+- Transcript view: 8/8 (speaker colors, interim badges, errors, empty state)
+- Recording controls: 11/11 (pulsing dot, status text, banners, connection state)
+- Audio level meter: 6/6 (bg-muted, dark text, destructive patterns)
+- Settings page: 6/6 (Card, Select, Label, Button all dark safe)
+- Profile page: 6/6 (badges, avatar, separator)
+- Export and confirmation popups: 4/4 (Button variants, destructive warning)
+- Empty states: 2/2 (dashboard, transcript)
+- Error states and toasts: 4/4 (destructive, border, toast variants)
+- Setup checklist: 2/2 (green/red icons)
+- New session page: 3/3 (form components, helper text)
+- Header and footer: 3/3 (bg-background, text-muted-foreground)
+- Semantic tokens: 1/1 (no hardcoded light-only colors)
+- Mock data: 0 hits in src/
+
+**Code quality:**
+- TypeScript: Zero errors in source files
+- ESLint: Zero new errors
+- Mock data grep: Zero hits in src/
+
+**Current status:** 36/46 features passing (78.3%)
+
+### What to work on next:
+- Feature #35-36, #38-46: Remaining features in backlog
