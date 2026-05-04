@@ -9,6 +9,12 @@ import {
   Zap,
   Shield,
   ArrowRight,
+  Newspaper,
+  Globe,
+  GraduationCap,
+  Podcast,
+  Captions,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth-client";
@@ -30,12 +36,12 @@ export default function Home() {
             Real Team Translation
           </h1>
           <p className="text-xl sm:text-2xl font-semibold text-muted-foreground max-w-2xl mx-auto">
-            Real-time transcription and translation for journalists
+            Real-time transcription and translation for every conversation
           </p>
           <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
-            Capture audio from meetings or calls, transcribe speech in real-time
-            with speaker identification, and translate transcripts on-the-fly to
-            your target language.
+            Capture audio from any conversation, transcribe speech in real time
+            with speaker identification, and translate on the fly into your
+            target language.
           </p>
 
           {/* CTA Buttons */}
@@ -68,7 +74,7 @@ export default function Home() {
       <section className="container mx-auto px-4 py-12 md:py-16">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-10">
-            Everything you need for multilingual coverage
+            Everything you need to follow any conversation, in any language
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div className="p-6 border rounded-lg card-interactive">
@@ -183,13 +189,93 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Who it's for */}
+      <section className="container mx-auto px-4 py-12 md:py-16">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3">
+            Who it&apos;s for
+          </h2>
+          <p className="text-center text-muted-foreground max-w-2xl mx-auto mb-10">
+            Anyone who needs to understand a live conversation across
+            languages &mdash; here are a few of them.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="p-6 border rounded-lg card-interactive">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 mb-4">
+                <Newspaper className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Journalists &amp; reporters</h3>
+              <p className="text-sm text-muted-foreground">
+                Interviews, press conferences, and field recordings &mdash;
+                transcribed and translated as they happen.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg card-interactive">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 mb-4">
+                <Globe className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Remote &amp; global teams</h3>
+              <p className="text-sm text-muted-foreground">
+                Follow cross-language standups, client calls, and meetings
+                without losing the room.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg card-interactive">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 mb-4">
+                <GraduationCap className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Researchers &amp; academics</h3>
+              <p className="text-sm text-muted-foreground">
+                Capture field interviews, lectures, and oral history with
+                speaker labels and a translated transcript.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg card-interactive">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 mb-4">
+                <Podcast className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Podcasters &amp; creators</h3>
+              <p className="text-sm text-muted-foreground">
+                Record multilingual conversations with a clean transcript ready
+                for editing, subtitles, or show notes.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg card-interactive">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 mb-4">
+                <Captions className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Accessibility</h3>
+              <p className="text-sm text-muted-foreground">
+                Live captions for deaf and hard-of-hearing participants, or for
+                anyone joining in their second language.
+              </p>
+            </div>
+
+            <div className="p-6 border rounded-lg card-interactive">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 mb-4">
+                <BookOpen className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="font-semibold mb-2">Language learners</h3>
+              <p className="text-sm text-muted-foreground">
+                Practice listening with the original transcript and a parallel
+                translation side by side.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Bottom CTA */}
       <section className="container mx-auto px-4 py-12 md:py-16">
         <div className="max-w-2xl mx-auto text-center space-y-6 p-8 border rounded-lg bg-card">
           <h2 className="text-2xl font-bold">Ready to get started?</h2>
           <p className="text-muted-foreground">
-            Start transcribing and translating meetings, interviews, and press
-            conferences in real-time.
+            Start transcribing and translating meetings, interviews, lectures,
+            and calls in real time.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {session ? (
