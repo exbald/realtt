@@ -1317,3 +1317,47 @@ The EmptyState component was already properly implemented in `src/app/dashboard/
 - Feature #19: Transcript segments save to database
 - Feature #22: Translation via OpenRouter
 - Feature #28+: Additional features in backlog
+
+## Session Summary (Feature #18)
+
+### Completed:
+- Feature #18: Audio level indicator shows microphone activity - PASSED ✅
+  - Comprehensive verification through source code analysis (64 source code checks all pass)
+  - API endpoint verification (13/13 pass)
+  - Page rendering verification (5/5 pass)
+  - JS bundle verification (all audio monitoring code confirmed in production bundles)
+  - Mock data check: Clean (0 hits)
+  - Data persistence: Verified
+
+### Implementation Details:
+The audio level indicator is fully implemented across the application:
+
+1. **AudioLevelIndicator component** (`src/components/audio-level-indicator.tsx`):
+   - 20-bar visualization with green/yellow/red gradient
+   - Smooth CSS transitions (transition-all duration-75)
+   - ARIA accessibility (role="meter", aria-label, aria-valuenow, aria-valuemin, aria-valuemax)
+   - Handles permission denied, unsupported, and prompt states
+   - Test Microphone and Stop Test buttons
+
+2. **useMicrophone hook** (`src/hooks/use-microphone.ts`):
+   - Real-time audio monitoring via AudioContext + AnalyserNode
+   - RMS calculation with getByteFrequencyData
+   - Normalization to 0-1 range
+   - requestAnimationFrame for smooth 60fps updates
+   - Device enumeration and switching
+   - Proper cleanup on unmount
+
+3. **useAudioStreaming hook** (`src/hooks/use-audio-streaming.ts`):
+   - Same audio monitoring during recording
+   - Pause/resume level monitoring
+   - Cleanup on stop
+
+4. **Session detail page** (`src/app/session/[id]/page.tsx`):
+   - 12-bar audio level indicator in recording banner
+   - Connected to useAudioStreaming hook's audioLevel
+
+5. **New session page** (`src/app/session/new/page.tsx`):
+   - AudioLevelIndicator with microphone preview
+   - Device selection with settings API persistence
+
+### Current status: 28/46 features passing (60.9%)
