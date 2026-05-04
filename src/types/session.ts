@@ -25,7 +25,7 @@ export const SUPPORTED_LANGUAGES = [
 export type LanguageCode = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 
 // Session status lifecycle: created -> recording -> paused -> recording -> completed
-export type SessionStatus = "recording" | "paused" | "completed";
+export type SessionStatus = "created" | "recording" | "paused" | "completed";
 
 // Transcription session (maps to session table in DB)
 export interface TranscriptionSession {
@@ -62,23 +62,6 @@ export interface UserSettings {
   defaultTargetLanguage: LanguageCode;
   selectedMicrophoneId: string | null;
   updatedAt: Date;
-}
-
-// Socket.io event types
-export interface ClientToServerEvents {
-  "audio-chunk": (data: ArrayBuffer) => void;
-  "start-recording": (data: { sessionId: string; targetLanguage: string }) => void;
-  "stop-recording": (data: { sessionId: string }) => void;
-  "pause-recording": (data: { sessionId: string }) => void;
-  "resume-recording": (data: { sessionId: string }) => void;
-}
-
-export interface ServerToClientEvents {
-  "transcript-interim": (data: { segment: TranscriptSegment }) => void;
-  "transcript-final": (data: { segment: TranscriptSegment }) => void;
-  translation: (data: { segmentId: string; translatedText: string }) => void;
-  "recording-status": (data: { status: SessionStatus }) => void;
-  error: (data: { message: string; code?: string }) => void;
 }
 
 // Speaker color assignments (6 distinct, colorblind-friendly colors)

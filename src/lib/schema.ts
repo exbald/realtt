@@ -94,7 +94,7 @@ export const transcriptionSession = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
     title: text("title").notNull().default("Untitled Session"),
-    status: text("status").notNull().default("completed"), // "recording", "paused", "completed"
+    status: text("status").notNull().default("created"), // "created", "recording", "paused", "completed"
     sourceLanguage: text("source_language").default("auto-detected"),
     targetLanguage: text("target_language").notNull(),
     durationSeconds: integer("duration_seconds").default(0),

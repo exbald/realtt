@@ -6,8 +6,6 @@ import {
   ArrowLeft,
   Trash2,
   Download,
-  Wifi,
-  WifiOff,
   Loader2,
   AlertTriangle,
   Square,
@@ -37,8 +35,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAudioStreaming } from "@/hooks/use-audio-streaming";
-import { useSocket, ConnectionState } from "@/hooks/use-socket";
 import { useSession } from "@/lib/auth-client";
+import type { DeepgramSegment } from "@/lib/transcription/browser-deepgram";
 
 interface TranscriptSegment {
   id: string;
@@ -63,54 +61,10 @@ interface TranscriptionSession {
   segments: TranscriptSegment[];
 }
 
-/** Deepgram service error state */
 interface DeepgramError {
   title: string;
   message: string;
   canRetry: boolean;
-  reconnecting: boolean;
-  retryAttempt?: number | undefined;
-  maxRetries?: number | undefined;
-}
-
-/** Per-segment translation error state */
-interface TranslationError {
-  segmentId: string;
-  error: string;
-}
-
-function getConnectionStateDisplay(state: ConnectionState, transport: string | null) {
-  switch (state) {
-    case "connected":
-      return {
-        label: transport === "websocket" ? "WebSocket" : "Connected",
-        icon: Wifi,
-        color: "text-green-500",
-        bgColor: "bg-green-50 dark:bg-green-950",
-      };
-    case "connecting":
-      return {
-        label: "Connecting...",
-        icon: Loader2,
-        color: "text-yellow-500",
-        bgColor: "bg-yellow-50 dark:bg-yellow-950",
-      };
-    case "reconnecting":
-      return {
-        label: "Reconnecting...",
-        icon: Loader2,
-        color: "text-orange-500",
-        bgColor: "bg-orange-50 dark:bg-orange-950",
-      };
-    case "disconnected":
-    default:
-      return {
-        label: "Disconnected",
-        icon: WifiOff,
-        color: "text-red-500",
-        bgColor: "bg-red-50 dark:bg-red-950",
-      };
-  }
 }
 
 function formatTimer(totalSeconds: number): string {
@@ -125,8 +79,7 @@ function formatTimer(totalSeconds: number): string {
 
 /**
  * Merge database segments with live (real-time) segments.
- * Live segments replace database segments when they overlap (interim → final).
- * Final live segments take priority over database segments.
+ * Live segments replace database segments when they overlap.
  */
 function mergeSegments(
   dbSegments: TranscriptSegment[],
@@ -135,9 +88,7 @@ function mergeSegments(
   if (liveSegments.length === 0) return dbSegments;
   if (dbSegments.length === 0) return liveSegments;
 
-  // Start with DB segments that aren't overridden by live segments
   const merged = dbSegments.filter((db) => {
-    // If there's a final live segment for the same speaker/time, prefer live
     return !liveSegments.some(
       (live) =>
         live.isFinal &&
@@ -146,15 +97,10 @@ function mergeSegments(
     );
   });
 
-  // Add all live segments
   for (const live of liveSegments) {
-    // Don't add live segments that duplicate DB segments
-    if (!merged.some((m) => m.id === live.id)) {
-      merged.push(live);
-    }
+    if (!merged.some((m) => m.id === live.id)) merged.push(live);
   }
 
-  // Sort by start time, then by createdAt
   merged.sort((a, b) => {
     if (a.startTime !== b.startTime) return a.startTime - b.startTime;
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -163,220 +109,292 @@ function mergeSegments(
   return merged;
 }
 
+function friendlyDeepgramError(message: string): DeepgramError {
+  const lower = message.toLowerCase();
+  if (lower.includes("401") || lower.includes("unauthorized") || lower.includes("invalid api key")) {
+    return {
+      title: "Authentication Error",
+      message: "The transcription service rejected the temporary key. Please try again.",
+      canRetry: true,
+    };
+  }
+  if (lower.includes("429") || lower.includes("rate limit")) {
+    return {
+      title: "Rate Limited",
+      message: "Too many requests to the transcription service. Please wait a moment and retry.",
+      canRetry: true,
+    };
+  }
+  if (lower.includes("payment") || lower.includes("quota") || lower.includes("insufficient")) {
+    return {
+      title: "Service Quota Exceeded",
+      message: "The transcription service quota has been exceeded.",
+      canRetry: false,
+    };
+  }
+  if (lower.includes("not configured") || lower.includes("provision")) {
+    return {
+      title: "Not Configured",
+      message: "Transcription is not configured on the server.",
+      canRetry: false,
+    };
+  }
+  if (lower.includes("network") || lower.includes("websocket") || lower.includes("closed")) {
+    return {
+      title: "Connection Lost",
+      message: "Lost connection to the transcription service. Click Retry to reconnect.",
+      canRetry: true,
+    };
+  }
+  return {
+    title: "Transcription Error",
+    message: "An unexpected error occurred with the transcription service. Existing transcript data is preserved.",
+    canRetry: true,
+  };
+}
+
+/** Fire-and-forget POST to persist a finalized segment. */
+async function persistSegment(sessionId: string, seg: DeepgramSegment): Promise<void> {
+  try {
+    await fetch(`/api/sessions/${sessionId}/segments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: seg.id,
+        speakerLabel: seg.speakerLabel,
+        originalText: seg.originalText,
+        startTime: seg.startTime,
+        endTime: seg.endTime,
+        isFinal: true,
+      }),
+    });
+  } catch (err) {
+    console.error("[Session] Failed to persist segment:", err);
+  }
+}
+
+/**
+ * Stream a translation for a finalized segment via /api/translate.
+ * Calls onChunk with cumulative text as tokens arrive.
+ */
+async function streamTranslation(params: {
+  sessionId: string;
+  segmentId: string;
+  originalText: string;
+  targetLanguage: string;
+  onChunk: (cumulative: string) => void;
+}): Promise<{ ok: true; full: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: params.sessionId,
+        segmentId: params.segmentId,
+        originalText: params.originalText,
+        targetLanguage: params.targetLanguage,
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      return { ok: false, error: err.error || `HTTP ${res.status}` };
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let full = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      full += chunk;
+      params.onChunk(full);
+    }
+    return { ok: true, full };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
 export default function SessionDetailPage() {
   const { data: session, isPending } = useSession();
   const router = useRouter();
   const params = useParams();
   const sessionId = params.id as string;
+
   const [sessionData, setSessionData] = useState<TranscriptionSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDisconnectWarning, setShowDisconnectWarning] = useState(false);
 
-  // Recording state
   const [showStopDialog, setShowStopDialog] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
 
-  // Delete state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Export state
   const [isExporting, setIsExporting] = useState(false);
 
-  // Real-time transcript segments (interim + final from Deepgram)
   const [liveSegments, setLiveSegments] = useState<TranscriptSegment[]>([]);
 
-  // Error states
   const [deepgramError, setDeepgramError] = useState<DeepgramError | null>(null);
   const [translationErrors, setTranslationErrors] = useState<Map<string, string>>(new Map());
-  const [isRetryingDeepgram, setIsRetryingDeepgram] = useState(false);
 
-  // Transcript layout ref for auto-scroll
   const transcriptRef = useRef<TranscriptLayoutHandle>(null);
 
-  // Socket.io connection - auto-connects when sessionId is available
-  const {
-    connectionState,
-    isConnected,
-    socket,
-    reconnectAttempts,
-    transport,
-    disconnect: disconnectSocket,
-  } = useSocket({
-    autoConnect: true,
-    sessionId,
-    onConnect: (sock) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Session] Socket connected: ${sock.id}`);
-      toast.success("Real-time connection established");
-    },
-    onDisconnect: (reason) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Session] Socket disconnected: ${reason}`);
-      if (reason === "io server disconnect" || reason === "io client disconnect") {
-        // Intentional disconnect - no warning needed
-        return;
+  // Track segments we've already persisted/translated so we don't double up.
+  const persistedRef = useRef<Set<string>>(new Set());
+  const translatedRef = useRef<Set<string>>(new Set());
+
+  const targetLanguage = sessionData?.targetLanguage || "en";
+
+  // Trigger translation for a finalized segment (and persist it server-side first).
+  const handleFinalSegment = useCallback(
+    async (seg: DeepgramSegment) => {
+      if (persistedRef.current.has(seg.id)) return;
+      persistedRef.current.add(seg.id);
+
+      await persistSegment(sessionId, seg);
+
+      if (translatedRef.current.has(seg.id)) return;
+      translatedRef.current.add(seg.id);
+
+      const result = await streamTranslation({
+        sessionId,
+        segmentId: seg.id,
+        originalText: seg.originalText,
+        targetLanguage,
+        onChunk: (cumulative) => {
+          setLiveSegments((prev) =>
+            prev.map((s) =>
+              s.id === seg.id ? { ...s, translatedText: cumulative } : s
+            )
+          );
+        },
+      });
+
+      if (!result.ok) {
+        setTranslationErrors((prev) => {
+          const next = new Map(prev);
+          next.set(seg.id, result.error || "Translation failed");
+          return next;
+        });
+      } else {
+        setTranslationErrors((prev) => {
+          const next = new Map(prev);
+          next.delete(seg.id);
+          return next;
+        });
+        setSessionData((prev) =>
+          prev
+            ? {
+                ...prev,
+                segments: prev.segments.map((s) =>
+                  s.id === seg.id ? { ...s, translatedText: result.full } : s
+                ),
+              }
+            : prev
+        );
       }
-      setShowDisconnectWarning(true);
     },
-    onReconnect: () => {
-      // eslint-disable-next-line no-console
-      console.log("[Session] Socket reconnected");
-      toast.success("Connection restored");
-      setShowDisconnectWarning(false);
-    },
-    onError: (err) => {
-      console.error("[Session] Socket error:", err.message);
-    },
-  });
+    [sessionId, targetLanguage]
+  );
 
-  // Listen for real-time transcript segments from Deepgram
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleTranscriptSegment = (segment: TranscriptSegment & { isFinal?: boolean }) => {
+  const onSegment = useCallback(
+    (seg: DeepgramSegment) => {
+      const nowIso = new Date().toISOString();
       setLiveSegments((prev) => {
-        // For final segments, replace any matching interim segment
-        if (segment.isFinal) {
-          // Check if there's an interim segment with similar timing for same speaker
+        // For final segments: replace any matching interim entry.
+        if (seg.isFinal) {
           const filtered = prev.filter(
             (s) =>
               !(
-                s.speakerLabel === segment.speakerLabel &&
+                s.speakerLabel === seg.speakerLabel &&
                 !s.isFinal &&
-                Math.abs(s.startTime - segment.startTime) < 2
+                Math.abs(s.startTime - seg.startTime) < 2
               )
           );
-          return [...filtered, { ...segment, createdAt: segment.createdAt || new Date().toISOString() }];
+          return [
+            ...filtered,
+            {
+              id: seg.id,
+              speakerLabel: seg.speakerLabel,
+              originalText: seg.originalText,
+              translatedText: null,
+              startTime: seg.startTime,
+              endTime: seg.endTime,
+              isFinal: true,
+              createdAt: nowIso,
+            },
+          ];
         }
 
-        // For interim segments, replace existing interim for same speaker/time range
+        // Interim: replace existing interim for same speaker/time range.
         const filtered = prev.filter(
           (s) =>
             !(
-              s.speakerLabel === segment.speakerLabel &&
+              s.speakerLabel === seg.speakerLabel &&
               !s.isFinal &&
-              Math.abs(s.startTime - segment.startTime) < 2
+              Math.abs(s.startTime - seg.startTime) < 2
             )
         );
-        return [...filtered, { ...segment, createdAt: segment.createdAt || new Date().toISOString() }];
+        return [
+          ...filtered,
+          {
+            id: seg.id,
+            speakerLabel: seg.speakerLabel,
+            originalText: seg.originalText,
+            translatedText: null,
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+            isFinal: false,
+            createdAt: nowIso,
+          },
+        ];
       });
-    };
 
-    // Listen for streaming translation chunks from OpenRouter
-    const handleTranslationChunk = (data: { segmentId: string; translatedText: string; isDone: boolean }) => {
-      setLiveSegments((prev) =>
-        prev.map((seg) => {
-          if (seg.id === data.segmentId) {
-            return { ...seg, translatedText: data.translatedText };
-          }
-          return seg;
-        })
-      );
-
-      // Also update sessionData segments if the segment is already saved in DB
-      if (data.isDone) {
-        setSessionData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            segments: prev.segments.map((seg) => {
-              if (seg.id === data.segmentId) {
-                return { ...seg, translatedText: data.translatedText };
-              }
-              return seg;
-            }),
-          };
-        });
-        // Clear any previous error for this segment on success
-        setTranslationErrors((prev) => {
-          const next = new Map(prev);
-          next.delete(data.segmentId);
-          return next;
-        });
+      if (seg.isFinal) {
+        handleFinalSegment(seg);
       }
-    };
+    },
+    [handleFinalSegment]
+  );
 
-    // Listen for translation errors
-    const handleTranslationError = (data: TranslationError) => {
-      setTranslationErrors((prev) => {
-        const next = new Map(prev);
-        next.set(data.segmentId, data.error);
-        return next;
-      });
-    };
+  const onDeepgramClose = useCallback((code: number, reason: string) => {
+    if (code === 1000) return;
+    const err = friendlyDeepgramError(`closed ${code} ${reason}`);
+    setDeepgramError(err);
+  }, []);
 
-    // Listen for Deepgram service errors
-    const handleDeepgramError = (data: DeepgramError & { sessionId?: string }) => {
-      const errorState: DeepgramError = {
-        title: data.title,
-        message: data.message,
-        canRetry: data.canRetry,
-        reconnecting: data.reconnecting,
-      };
-      if (data.retryAttempt !== undefined) {
-        errorState.retryAttempt = data.retryAttempt;
-      }
-      if (data.maxRetries !== undefined) {
-        errorState.maxRetries = data.maxRetries;
-      }
-      setDeepgramError(errorState);
-      setIsRetryingDeepgram(data.reconnecting);
-    };
+  const onAudioError = useCallback((err: Error) => {
+    console.error("[Session] Recording error:", err.message);
+    const friendly = friendlyDeepgramError(err.message);
+    setDeepgramError(friendly);
+    toast.error(friendly.message);
+  }, []);
 
-    // Listen for Deepgram reconnection success
-    const handleDeepgramReconnected = () => {
-      setDeepgramError(null);
-      setIsRetryingDeepgram(false);
-      toast.success("Transcription service reconnected");
-    };
-
-    socket.on("transcript-segment", handleTranscriptSegment);
-    socket.on("translation-chunk", handleTranslationChunk);
-    socket.on("translation-error", handleTranslationError);
-    socket.on("deepgram-error", handleDeepgramError);
-    socket.on("deepgram-reconnected", handleDeepgramReconnected);
-
-    return () => {
-      socket.off("transcript-segment", handleTranscriptSegment);
-      socket.off("translation-chunk", handleTranslationChunk);
-      socket.off("translation-error", handleTranslationError);
-      socket.off("deepgram-error", handleDeepgramError);
-      socket.off("deepgram-reconnected", handleDeepgramReconnected);
-    };
-  }, [socket]);
-
-  // Audio streaming hook
   const {
     recordingState,
     chunksSent,
     duration: streamingDuration,
     audioLevel,
     isSupported: isMediaRecorderSupported,
+    deepgramState,
+    speakerCount,
     startRecording,
     pauseRecording,
     resumeRecording,
     stopRecording,
   } = useAudioStreaming({
-    socket,
-    isConnected,
     sessionId,
-    targetLanguage: sessionData?.targetLanguage || "en",
-    onStateChange: (state) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Session] Recording state changed: ${state}`);
-    },
-    onError: (err) => {
-      console.error("[Session] Recording error:", err.message);
-      toast.error(`Recording error: ${err.message}`);
-    },
+    targetLanguage,
+    onSegment,
+    onDeepgramClose,
+    onError: onAudioError,
   });
 
   useEffect(() => {
-    if (!isPending && !session) {
-      router.push("/");
-    }
+    if (!isPending && !session) router.push("/");
   }, [isPending, session, router]);
 
   useEffect(() => {
@@ -398,41 +416,34 @@ export default function SessionDetailPage() {
   }, [session?.user?.id, sessionId]);
 
   const handleStartRecording = useCallback(async () => {
-    // Guard: don't start if already recording or paused
     if (recordingState === "recording" || recordingState === "paused") {
       toast.info("Recording is already in progress");
       return;
     }
 
     try {
-      // Update session status to "recording" in the database
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "recording" }),
       });
-
       if (!res.ok) {
         const err = await res.json();
         toast.error(err.error || "Failed to start recording");
         return;
       }
-
       const updated = await res.json();
-      setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
-
-      // Start audio streaming
+      setSessionData((prev) => (prev ? { ...prev, ...updated } : prev));
+      setDeepgramError(null);
       await startRecording();
       toast.success("Recording started");
-    } catch (err) {
+    } catch {
       toast.error("Failed to start recording");
     }
   }, [sessionId, startRecording, recordingState]);
 
   const handlePauseRecording = useCallback(async () => {
     pauseRecording();
-
-    // Update session status to "paused" in the database
     try {
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
@@ -441,20 +452,16 @@ export default function SessionDetailPage() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+        setSessionData((prev) => (prev ? { ...prev, ...updated } : prev));
       }
     } catch {
-      // Database update failed but recording is still paused client-side
       console.error("[Session] Failed to update pause status in database");
     }
-
     toast.info("Recording paused");
   }, [pauseRecording, sessionId]);
 
   const handleResumeRecording = useCallback(async () => {
     resumeRecording();
-
-    // Update session status back to "recording" in the database
     try {
       const res = await fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
@@ -463,61 +470,71 @@ export default function SessionDetailPage() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+        setSessionData((prev) => (prev ? { ...prev, ...updated } : prev));
       }
     } catch {
-      // Database update failed but recording is still resumed client-side
       console.error("[Session] Failed to update resume status in database");
     }
-
     toast.info("Recording resumed");
   }, [resumeRecording, sessionId]);
 
-  // Retry Deepgram connection
-  const handleRetryDeepgram = useCallback(() => {
-    if (!socket || !isConnected) {
-      toast.error("Cannot retry: not connected to server");
-      return;
-    }
-    setIsRetryingDeepgram(true);
-    setDeepgramError((prev) => prev ? { ...prev, reconnecting: true } : prev);
-    socket.emit("retry-deepgram");
-  }, [socket, isConnected]);
-
-  // Dismiss Deepgram error
   const handleDismissDeepgramError = useCallback(() => {
     setDeepgramError(null);
   }, []);
 
-  // Retry translation for a specific segment
-  const handleRetryTranslation = useCallback((segmentId: string) => {
-    if (!socket || !isConnected) return;
-    // Find the segment text
-    const mergedSegs = mergeSegments(sessionData?.segments || [], liveSegments);
-    const segment = mergedSegs.find((s) => s.id === segmentId);
-    if (!segment) return;
+  const handleRetryTranslation = useCallback(
+    async (segmentId: string) => {
+      const mergedSegs = mergeSegments(sessionData?.segments || [], liveSegments);
+      const segment = mergedSegs.find((s) => s.id === segmentId);
+      if (!segment) return;
 
-    // Clear the error for this segment
-    setTranslationErrors((prev) => {
-      const next = new Map(prev);
-      next.delete(segmentId);
-      return next;
-    });
+      setTranslationErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(segmentId);
+        return next;
+      });
 
-    socket.emit("retry-translation", {
-      segmentId,
-      originalText: segment.originalText,
-      targetLanguage: sessionData?.targetLanguage || "en",
-    });
-  }, [socket, isConnected, sessionData, liveSegments]);
+      const result = await streamTranslation({
+        sessionId,
+        segmentId,
+        originalText: segment.originalText,
+        targetLanguage,
+        onChunk: (cumulative) => {
+          setLiveSegments((prev) =>
+            prev.map((s) =>
+              s.id === segmentId ? { ...s, translatedText: cumulative } : s
+            )
+          );
+        },
+      });
+
+      if (!result.ok) {
+        setTranslationErrors((prev) => {
+          const next = new Map(prev);
+          next.set(segmentId, result.error || "Translation failed");
+          return next;
+        });
+      } else {
+        setSessionData((prev) =>
+          prev
+            ? {
+                ...prev,
+                segments: prev.segments.map((s) =>
+                  s.id === segmentId ? { ...s, translatedText: result.full } : s
+                ),
+              }
+            : prev
+        );
+      }
+    },
+    [sessionId, sessionData, liveSegments, targetLanguage]
+  );
 
   const handleStopRecording = useCallback(async () => {
     setIsStopping(true);
     try {
-      // Stop audio streaming
       await stopRecording();
 
-      // Accumulate duration: add current streaming duration to existing session duration
       const currentDuration = streamingDuration;
       const totalDuration = (sessionData?.durationSeconds ?? 0) + currentDuration;
       const res = await fetch(`/api/sessions/${sessionId}`, {
@@ -526,14 +543,26 @@ export default function SessionDetailPage() {
         body: JSON.stringify({
           status: "completed",
           durationSeconds: totalDuration,
+          speakerCount,
         }),
       });
 
       if (res.ok) {
         const updated = await res.json();
-        setSessionData((prev) => prev ? { ...prev, ...updated } : prev);
+        setSessionData((prev) => (prev ? { ...prev, ...updated } : prev));
         toast.success(`Recording stopped (${chunksSent} audio chunks sent)`);
         setShowStopDialog(false);
+
+        // Refresh segments from DB so persisted final ones replace live state.
+        try {
+          const fresh = await fetch(`/api/sessions/${sessionId}`).then((r) => r.json());
+          setSessionData(fresh);
+          setLiveSegments([]);
+          persistedRef.current.clear();
+          translatedRef.current.clear();
+        } catch {
+          /* ignore — in-memory state still shows the transcript */
+        }
       } else {
         const err = await res.json();
         toast.error(err.error || "Failed to stop recording");
@@ -543,7 +572,7 @@ export default function SessionDetailPage() {
     } finally {
       setIsStopping(false);
     }
-  }, [sessionId, streamingDuration, stopRecording, chunksSent, sessionData?.durationSeconds]);
+  }, [sessionId, streamingDuration, stopRecording, chunksSent, sessionData, speakerCount]);
 
   if (isPending || !session) {
     return (
@@ -615,24 +644,20 @@ export default function SessionDetailPage() {
     }
   };
 
+  const isRecording = recordingState === "recording";
+  const isPaused = recordingState === "paused";
+  const isActive = isRecording || isPaused;
+
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      // Stop recording first if active, to cleanly shut down resources
       if (isActive) {
-        try {
-          await stopRecording();
-        } catch {
-          // Recording stop failed - proceed with deletion anyway
+        try { await stopRecording(); } catch {
           console.error("[Session] Failed to stop recording before deletion");
         }
       }
-
-      const res = await fetch(`/api/sessions/${sessionId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
       if (res.ok) {
-        disconnectSocket();
         toast.success("Session deleted");
         router.push("/dashboard");
       } else {
@@ -652,16 +677,11 @@ export default function SessionDetailPage() {
     return `${mins}m ${secs}s`;
   };
 
-  const isRecording = recordingState === "recording";
-  const isPaused = recordingState === "paused";
-  const isActive = isRecording || isPaused;
-  const connectionDisplay = getConnectionStateDisplay(connectionState, transport);
-  const ConnectionIcon = connectionDisplay.icon;
+  const recordDisabled = !isMediaRecorderSupported;
 
   return (
     <div className="container max-w-6xl mx-auto py-4 sm:py-8 px-4">
       <div className="flex flex-col gap-4 mb-6 sm:mb-8">
-        {/* Title row */}
         <div className="flex items-center gap-3 min-w-0">
           <Button
             variant="ghost"
@@ -675,15 +695,13 @@ export default function SessionDetailPage() {
           </Button>
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold truncate">{sessionData.title}</h1>
         </div>
-        {/* Action buttons row - wraps on mobile */}
         <div className="flex flex-wrap gap-2">
-          {/* Recording Controls - show Record button when no active recording */}
           {!isActive && (
             <Button
               variant="default"
               size="sm"
               onClick={handleStartRecording}
-              disabled={!isConnected || !isMediaRecorderSupported}
+              disabled={recordDisabled}
               className="gap-2 bg-red-600 hover:bg-red-700 text-white min-h-[44px]"
             >
               <Mic className="h-4 w-4" />
@@ -777,9 +795,17 @@ export default function SessionDetailPage() {
                 <span className="text-2xl font-mono font-bold tabular-nums">
                   {formatTimer(streamingDuration)}
                 </span>
+                {deepgramState === "connecting" && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Connecting
+                  </Badge>
+                )}
+                {deepgramState === "open" && (
+                  <Badge variant="outline" className="text-xs">Live</Badge>
+                )}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
-                {/* Audio level bar - hidden on mobile, shown on sm+ */}
                 <div className="hidden sm:flex items-center gap-1.5">
                   <span className="text-xs text-muted-foreground">Level</span>
                   <div className="flex items-center gap-[2px] h-4" role="meter" aria-label="Audio input level" aria-valuenow={Math.round(audioLevel * 100)} aria-valuemin={0} aria-valuemax={100}>
@@ -787,11 +813,8 @@ export default function SessionDetailPage() {
                       const activeBars = Math.round(audioLevel * 12);
                       const filled = i < activeBars;
                       let barColor = "bg-green-500";
-                      if (i >= 12 * 0.7) {
-                        barColor = "bg-red-500";
-                      } else if (i >= 12 * 0.5) {
-                        barColor = "bg-yellow-500";
-                      }
+                      if (i >= 12 * 0.7) barColor = "bg-red-500";
+                      else if (i >= 12 * 0.5) barColor = "bg-yellow-500";
                       return (
                         <div
                           key={i}
@@ -802,7 +825,6 @@ export default function SessionDetailPage() {
                     })}
                   </div>
                 </div>
-                {/* Chunk counter */}
                 <span className="text-xs text-muted-foreground">
                   {chunksSent} chunks sent
                 </span>
@@ -836,70 +858,8 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
-      {/* Connection Status Banner */}
-      <Card className="mb-4 sm:mb-6">
-        <CardContent className="py-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <ConnectionIcon
-                className={`h-4 w-4 ${connectionDisplay.color} ${
-                  connectionState === "connecting" || connectionState === "reconnecting"
-                    ? "animate-spin"
-                    : ""
-                }`}
-              />
-              <span className={`text-sm font-medium ${connectionDisplay.color}`}>
-                {connectionDisplay.label}
-              </span>
-              {isConnected && transport && (
-                <Badge variant="outline" className="text-xs">
-                  {transport}
-                </Badge>
-              )}
-              {reconnectAttempts > 0 && connectionState === "reconnecting" && (
-                <span className="text-xs text-muted-foreground">
-                  (attempt {reconnectAttempts})
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                variant={isActive ? "default" : "secondary"}
-              >
-                {isActive && isRecording && (
-                  <Circle className="h-3 w-3 mr-1 fill-current" />
-                )}
-                {isActive && isPaused && (
-                  <Pause className="h-3 w-3 mr-1" />
-                )}
-                {!isActive && sessionData.status}
-                {isRecording && "Recording"}
-                {isPaused && "Paused"}
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Disconnection Warning */}
-      {showDisconnectWarning && (
-        <Card className="mb-6 border-orange-300 dark:border-orange-700">
-          <CardContent className="py-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-orange-500" />
-              <div>
-                <p className="text-sm font-medium">Connection Lost</p>
-                <p className="text-xs text-muted-foreground">
-                  Attempting to reconnect... Your session data is safe.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Deepgram Service Error Banner */}
-      {deepgramError && !deepgramError.reconnecting && (
+      {deepgramError && (
         <Card className="mb-6 border-red-300 dark:border-red-700">
           <CardContent className="py-3">
             <div className="flex items-start gap-3">
@@ -907,29 +867,19 @@ export default function SessionDetailPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">{deepgramError.title}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{deepgramError.message}</p>
-                {deepgramError.retryAttempt !== undefined && deepgramError.maxRetries && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Retry attempt {deepgramError.retryAttempt} of {deepgramError.maxRetries}
-                  </p>
-                )}
                 <p className="text-xs text-muted-foreground mt-1">
                   Your existing transcript data is preserved.
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {deepgramError.canRetry && (
+                {deepgramError.canRetry && !isActive && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleRetryDeepgram}
-                    disabled={isRetryingDeepgram}
+                    onClick={handleStartRecording}
                     className="gap-1.5 text-xs"
                   >
-                    {isRetryingDeepgram ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    )}
+                    <RefreshCw className="h-3.5 w-3.5" />
                     Retry
                   </Button>
                 )}
@@ -948,23 +898,6 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
-      {/* Deepgram Reconnecting Banner */}
-      {deepgramError?.reconnecting && (
-        <Card className="mb-6 border-yellow-300 dark:border-yellow-700">
-          <CardContent className="py-3">
-            <div className="flex items-center gap-3">
-              <Loader2 className="h-5 w-5 text-yellow-500 animate-spin" />
-              <div>
-                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">Reconnecting</p>
-                <p className="text-xs text-muted-foreground">
-                  Attempting to reconnect to the transcription service...
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Start Recording Banner for non-active sessions */}
       {!isActive && (
         <Card className="mb-4 sm:mb-6 border-blue-200 dark:border-blue-800">
@@ -976,11 +909,9 @@ export default function SessionDetailPage() {
                   <p className="text-sm font-medium">
                     {sessionData.status === "completed"
                       ? "Session completed"
-                      : sessionData.status === "recording"
-                        ? "Ready to record"
-                        : sessionData.status === "paused"
-                          ? "Recording paused"
-                          : "Ready to record"}
+                      : sessionData.status === "paused"
+                        ? "Recording paused"
+                        : "Ready to record"}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Click &quot;Record&quot; to start a new recording in this session
@@ -991,7 +922,7 @@ export default function SessionDetailPage() {
                 variant="default"
                 size="sm"
                 onClick={handleStartRecording}
-                disabled={!isConnected || !isMediaRecorderSupported}
+                disabled={recordDisabled}
                 className="gap-2 bg-red-600 hover:bg-red-700 text-white min-h-[44px] shrink-0"
               >
                 <Mic className="h-4 w-4" />
@@ -1052,7 +983,6 @@ export default function SessionDetailPage() {
         onRetryTranslation={handleRetryTranslation}
       />
 
-      {/* Stop Recording Confirmation Dialog */}
       <Dialog open={showStopDialog} onOpenChange={setShowStopDialog}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -1099,7 +1029,6 @@ export default function SessionDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Session Confirmation Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
