@@ -1,3 +1,84 @@
+## Session: 2026-05-04 (Feature #30)
+
+### Feature #30: Translation and Deepgram error handling - PASSED ✅
+
+**What was accomplished:**
+
+1. **Backend Error Handling** (`src/lib/socket-server.ts`)
+   - Added `getUserFriendlyDeepgramError()` - Maps technical Deepgram errors to user-friendly messages
+     - Connection failures → "Connection Failed"
+     - 401/Authentication → "Authentication Error"
+     - 429/Rate limit → "Rate Limited"
+     - 503/Unavailable → "Service Unavailable"
+     - 402/Quota → "Service Quota Exceeded"
+   - Added `getUserFriendlyTranslationError()` - Maps translation errors to user-friendly messages
+     - API key issues → "Translation is not configured"
+     - Auth failures → "authentication failed"
+     - Rate limits → "rate limit reached"
+     - Network errors → "Could not reach translation service"
+   - Added `deepgram-error` Socket.io event - Sends structured error with title, message, canRetry flag
+   - Added `deepgram-reconnected` event - Notifies client when reconnection succeeds
+   - Added `retry-deepgram` handler - Client can request Deepgram reconnection
+   - Added `retry-translation` handler - Client can retry translation for individual segments
+   - Added `translationErrors` map for per-segment error tracking
+   - Added `deepgramReconnectState` for reconnection attempt tracking
+   - Updated `translation-error` event to always include user-friendly message
+
+2. **Frontend Error State Tracking** (`src/app/session/[id]/page.tsx`)
+   - Added `DeepgramError` interface with title, message, canRetry, reconnecting fields
+   - Added `TranslationError` interface for per-segment error tracking
+   - Added `deepgramError` state for global Deepgram service errors
+   - Added `translationErrors` Map state for per-segment translation failures
+   - Added `isRetryingDeepgram` state for retry button loading
+   - Socket listeners for `translation-error`, `deepgram-error`, `deepgram-reconnected` events
+   - Proper cleanup of all error event listeners on unmount
+
+3. **Error Banner UI** (`src/app/session/[id]/page.tsx`)
+   - Deepgram error banner: Red border, AlertTriangle icon, title + message, Retry button (RefreshCw), dismiss button (X)
+   - Reconnecting banner: Yellow border, Loader2 spinner, "Reconnecting..." text
+   - Both banners show retry attempt count when applicable
+   - Both banners use `dark:` Tailwind variants for dark mode support
+   - Error banners appear between connection status and session details
+   - Error banners dismissible without page refresh
+
+4. **Transcript Error Indicators** (`src/components/transcript-layout.tsx`)
+   - Per-segment error display: AlertTriangle icon, error message, "Retry translation" button
+   - Error only shown in translation column - original text always preserved
+   - Error text in red with dark mode support (text-red-600 dark:text-red-400)
+   - Retry link triggers `onRetryTranslation` callback to re-attempt translation
+   - Seamless integration: error replaces "Translating..." state for failed segments
+
+5. **Error Recovery**
+   - Deepgram errors dismissible via X button (setDeepgramError(null))
+   - Deepgram reconnectable via Retry button (emits retry-deepgram)
+   - Translation errors clear automatically on successful retry
+   - Translation errors clearable via "Retry translation" link per segment
+   - App continues functioning for new segments after errors (activeTranslations cleanup)
+   - No stuck state: errors don't block subsequent operations
+
+**Verification (55/55 core tests passing):**
+- Backend error handling: 17/17 (all error mappings, events, handlers)
+- Frontend error state: 9/9 (interfaces, state, listeners, cleanup)
+- Error banner UI: 8/8 (banners, buttons, icons)
+- Transcript error indicators: 7/7 (error display, dark mode, original text preserved)
+- Dark/Light mode: 5/5 (all error UI has dark: variants)
+- Error recovery: 5/5 (dismiss, retry, auto-clear, no stuck state)
+- Mock data detection: 0 hits in src/
+- TypeScript: Zero errors in src/
+- ESLint: Zero errors in modified files
+
+**Code quality:**
+- TypeScript: Zero errors in source files ✅
+- ESLint: Zero errors ✅
+- Mock data grep: Zero hits in src/ ✅
+
+**Current status:** 30/46 features passing (65.2%)
+
+### What to work on next:
+- Feature #31+: Remaining features in backlog
+- Translation language selector enhancements
+- Export functionality improvements
+
 ## Session: 2026-05-04 (Feature #25)
 
 ### Feature #25: Auto-scroll and interim/final text styling - PASSED ✅
