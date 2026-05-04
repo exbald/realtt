@@ -260,24 +260,33 @@ interface DeepgramUtteranceEndMessage {
 }
 
 type ResultCallback = (result: DeepgramResult) => void;
+type ErrorCallback = (error: string) => void;
+type CloseCallback = (code: number, reason: string) => void;
 
 export class DeepgramClient {
   private ws: WebSocketClient | null = null;
   private sessionId: string;
   private onResult: ResultCallback;
+  private onErrorCallback: ErrorCallback | null;
+  private onCloseCallback: CloseCallback | null;
   private isConnected = false;
   private pendingSegments = new Map<string, DeepgramResult>();
   private speakerSet = new Set<string>();
   private hasApiKey: boolean;
   private apiKey: string;
+  private intentionallyClosing = false;
 
   constructor(
     sessionId: string,
     _targetLanguage: string,
-    onResult: ResultCallback
+    onResult: ResultCallback,
+    onError?: ErrorCallback,
+    onClose?: CloseCallback,
   ) {
     this.sessionId = sessionId;
     this.onResult = onResult;
+    this.onErrorCallback = onError ?? null;
+    this.onCloseCallback = onClose ?? null;
     this.apiKey = process.env.DEEPGRAM_API_KEY || "";
     this.hasApiKey = !!(this.apiKey && this.apiKey.trim());
   }
@@ -287,7 +296,7 @@ export class DeepgramClient {
       console.warn(
         "[Deepgram] No API key configured. Transcription disabled for this session."
       );
-      return;
+      throw new Error("Deepgram API key not configured. Please set DEEPGRAM_API_KEY.");
     }
 
     // Build Deepgram WebSocket URL with parameters
@@ -323,19 +332,28 @@ export class DeepgramClient {
     });
 
     this.ws.on("close", (code: unknown, reason: unknown) => {
+      const codeNum = typeof code === "number" ? code : 1006;
+      const reasonStr = typeof reason === "string" ? reason : "unknown";
       // eslint-disable-next-line no-console
       console.log(
-        `[Deepgram] Connection closed: code=${code}, reason=${reason || "unknown"}`
+        `[Deepgram] Connection closed: code=${codeNum}, reason=${reasonStr}`
       );
       this.isConnected = false;
+      // Notify callback only for unexpected closes (not intentional close() calls)
+      if (!this.intentionallyClosing) {
+        this.onCloseCallback?.(codeNum, reasonStr);
+      }
     });
 
     this.ws.on("error", (error: unknown) => {
+      const errMsg = (error as Error).message || "Unknown WebSocket error";
       console.error(
         "[Deepgram] WebSocket error:",
-        (error as Error).message
+        errMsg
       );
       this.isConnected = false;
+      // Notify callback about the error
+      this.onErrorCallback?.(errMsg);
     });
 
     await this.ws.connect(url, {
@@ -354,6 +372,7 @@ export class DeepgramClient {
   }
 
   async close(): Promise<void> {
+    this.intentionallyClosing = true;
 
     // Finalize all pending segments
     for (const [, segment] of this.pendingSegments) {

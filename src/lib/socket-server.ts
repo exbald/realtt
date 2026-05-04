@@ -267,7 +267,31 @@ export function startSocketServer(): Promise<SocketIOServer> {
           const deepgram = new DeepgramClient(
             data.sessionId,
             data.targetLanguage,
-            (result) => handleTranscriptResult(socket, result, data.targetLanguage)
+            (result) => handleTranscriptResult(socket, result, data.targetLanguage),
+            // onError: fired when Deepgram WebSocket encounters an error mid-stream
+            (errorMsg) => {
+              const friendlyError = getUserFriendlyDeepgramError(errorMsg);
+              socket.emit("deepgram-error", {
+                ...friendlyError,
+                sessionId: data.sessionId,
+                reconnecting: false,
+              });
+            },
+            // onClose: fired when Deepgram WebSocket closes unexpectedly
+            (code, reason) => {
+              // eslint-disable-next-line no-console
+              console.log(
+                `[Socket.io] Deepgram connection lost for session ${data.sessionId}: code=${code}, reason=${reason}`
+              );
+              const friendlyError = getUserFriendlyDeepgramError(
+                code === 1006 ? "Connection closed unexpectedly" : `Connection closed: ${reason}`
+              );
+              socket.emit("deepgram-error", {
+                ...friendlyError,
+                sessionId: data.sessionId,
+                reconnecting: false,
+              });
+            },
           );
 
           // Store in our map
@@ -341,7 +365,27 @@ export function startSocketServer(): Promise<SocketIOServer> {
           const deepgram = new DeepgramClient(
             sessionId,
             targetLanguage,
-            (result) => handleTranscriptResult(socket, result, targetLanguage)
+            (result) => handleTranscriptResult(socket, result, targetLanguage),
+            // onError: fired when Deepgram WebSocket encounters an error mid-stream
+            (errorMsg) => {
+              const friendlyError = getUserFriendlyDeepgramError(errorMsg);
+              socket.emit("deepgram-error", {
+                ...friendlyError,
+                sessionId,
+                reconnecting: false,
+              });
+            },
+            // onClose: fired when Deepgram WebSocket closes unexpectedly
+            (_code, reason) => {
+              const friendlyError = getUserFriendlyDeepgramError(
+                `Connection closed: ${reason}`
+              );
+              socket.emit("deepgram-error", {
+                ...friendlyError,
+                sessionId,
+                reconnecting: false,
+              });
+            },
           );
           deepgramConnections.set(socket.id, deepgram);
 
