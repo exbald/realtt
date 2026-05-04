@@ -41,7 +41,7 @@ async function loadAudioDevices(): Promise<AudioDevice[]> {
   }
   const allDevices = await navigator.mediaDevices.enumerateDevices();
   return allDevices
-    .filter((d) => d.kind === "audioinput")
+    .filter((d) => d.kind === "audioinput" && d.deviceId !== "")
     .map((d) => ({
       deviceId: d.deviceId,
       label: d.label || `Microphone (${d.deviceId.slice(0, 8)}...)`,
