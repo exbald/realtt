@@ -26,9 +26,9 @@ export default function ChatError({
           There was a problem with the chat service. This could be due to a
           connection issue or the AI service being temporarily unavailable.
         </p>
-        {error.message && (
-          <p className="text-sm text-muted-foreground mb-4 p-2 bg-muted rounded">
-            {error.message}
+        {error.digest && (
+          <p className="text-xs text-muted-foreground mb-4">
+            Error ID: {error.digest}
           </p>
         )}
         <div className="flex gap-4 justify-center">
