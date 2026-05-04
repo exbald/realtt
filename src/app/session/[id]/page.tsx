@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -17,7 +17,7 @@ import {
   Mic,
 } from "lucide-react";
 import { toast } from "sonner";
-import { TranscriptLayout } from "@/components/transcript-layout";
+import { TranscriptLayout, TranscriptLayoutHandle } from "@/components/transcript-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -165,6 +165,9 @@ export default function SessionDetailPage() {
 
   // Real-time transcript segments (interim + final from Deepgram)
   const [liveSegments, setLiveSegments] = useState<TranscriptSegment[]>([]);
+
+  // Transcript layout ref for auto-scroll
+  const transcriptRef = useRef<TranscriptLayoutHandle>(null);
 
   // Socket.io connection - auto-connects when sessionId is available
   const {
@@ -797,9 +800,11 @@ export default function SessionDetailPage() {
       </Card>
 
       <TranscriptLayout
+        ref={transcriptRef}
         segments={mergeSegments(sessionData.segments || [], liveSegments)}
         sourceLanguage={sessionData.sourceLanguage}
         targetLanguage={sessionData.targetLanguage}
+        isRecording={isRecording}
       />
 
       {/* Stop Recording Confirmation Dialog */}

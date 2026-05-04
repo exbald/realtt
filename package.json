@@ -2,7 +2,7 @@
   "name": "agentic-coding-starter-kit",
   "version": "1.1.2",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "pnpm run db:migrate && next build",
     "build:ci": "next build",
     "start": "next start",
