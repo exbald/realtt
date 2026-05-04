@@ -69,8 +69,8 @@ interface DeepgramError {
   message: string;
   canRetry: boolean;
   reconnecting: boolean;
-  retryAttempt?: number;
-  maxRetries?: number;
+  retryAttempt?: number | undefined;
+  maxRetries?: number | undefined;
 }
 
 /** Per-segment translation error state */
@@ -180,6 +180,9 @@ export default function SessionDetailPage() {
   // Delete state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
 
   // Real-time transcript segments (interim + final from Deepgram)
   const [liveSegments, setLiveSegments] = useState<TranscriptSegment[]>([]);
@@ -306,14 +309,19 @@ export default function SessionDetailPage() {
 
     // Listen for Deepgram service errors
     const handleDeepgramError = (data: DeepgramError & { sessionId?: string }) => {
-      setDeepgramError({
+      const errorState: DeepgramError = {
         title: data.title,
         message: data.message,
         canRetry: data.canRetry,
         reconnecting: data.reconnecting,
-        retryAttempt: data.retryAttempt,
-        maxRetries: data.maxRetries,
-      });
+      };
+      if (data.retryAttempt !== undefined) {
+        errorState.retryAttempt = data.retryAttempt;
+      }
+      if (data.maxRetries !== undefined) {
+        errorState.maxRetries = data.maxRetries;
+      }
+      setDeepgramError(errorState);
       setIsRetryingDeepgram(data.reconnecting);
     };
 
@@ -569,8 +577,35 @@ export default function SessionDetailPage() {
     );
   }
 
-  const handleExport = () => {
-    window.open(`/api/sessions/${sessionId}/export`, "_blank");
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/export`);
+      if (!res.ok) {
+        toast.error("Failed to export transcript");
+        return;
+      }
+      const blob = await res.blob();
+      const contentDisposition = res.headers.get("Content-Disposition");
+      let filename = `${sessionData.title.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}_${new Date().toISOString().split("T")[0]}.md`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?(.+?)"?(?:;|$)/);
+        if (match?.[1]) filename = match[1];
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Transcript exported as Markdown");
+    } catch {
+      toast.error("Failed to export transcript");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -679,9 +714,18 @@ export default function SessionDetailPage() {
               </Button>
             </>
           )}
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4 mr-2" />
-            Export
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting}>
+            {isExporting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </>
+            )}
           </Button>
           <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
             <Trash2 className="h-4 w-4 mr-2" />
@@ -832,6 +876,72 @@ export default function SessionDetailPage() {
         </Card>
       )}
 
+      {/* Deepgram Service Error Banner */}
+      {deepgramError && !deepgramError.reconnecting && (
+        <Card className="mb-6 border-red-300 dark:border-red-700">
+          <CardContent className="py-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-red-700 dark:text-red-400">{deepgramError.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{deepgramError.message}</p>
+                {deepgramError.retryAttempt !== undefined && deepgramError.maxRetries && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Retry attempt {deepgramError.retryAttempt} of {deepgramError.maxRetries}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  Your existing transcript data is preserved.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {deepgramError.canRetry && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetryDeepgram}
+                    disabled={isRetryingDeepgram}
+                    className="gap-1.5 text-xs"
+                  >
+                    {isRetryingDeepgram ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Retry
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDismissDeepgramError}
+                  className="h-7 w-7 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Deepgram Reconnecting Banner */}
+      {deepgramError?.reconnecting && (
+        <Card className="mb-6 border-yellow-300 dark:border-yellow-700">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 text-yellow-500 animate-spin" />
+              <div>
+                <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">Reconnecting</p>
+                <p className="text-xs text-muted-foreground">
+                  Attempting to reconnect to the transcription service...
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Start Recording Banner for completed sessions */}
       {sessionData.status === "completed" && !isActive && (
         <Card className="mb-6 border-blue-200 dark:border-blue-800">
@@ -907,6 +1017,8 @@ export default function SessionDetailPage() {
         sourceLanguage={sessionData.sourceLanguage}
         targetLanguage={sessionData.targetLanguage}
         isRecording={isRecording}
+        translationErrors={translationErrors}
+        onRetryTranslation={handleRetryTranslation}
       />
 
       {/* Stop Recording Confirmation Dialog */}

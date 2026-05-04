@@ -22,7 +22,6 @@ const translationErrors = new Map<string, string>();
 const deepgramReconnectState = new Map<string, { attempts: number; maxAttempts: number; timer: ReturnType<typeof setTimeout> | null }>();
 
 const DEEPGRAM_MAX_RECONNECT_ATTEMPTS = 3;
-const DEEPGRAM_RECONNECT_BASE_DELAY = 2000; // 2 seconds
 
 /**
  * Map technical error messages to user-friendly messages.

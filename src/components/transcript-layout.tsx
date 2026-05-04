@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useEffect, forwardRef, useImperativeHandle, useRef, useState } from "react";
-import { Clock, Languages, Loader2, ArrowDown } from "lucide-react";
+import { Clock, Languages, Loader2, ArrowDown, AlertTriangle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,10 @@ interface TranscriptLayoutProps {
   isRecording?: boolean;
   /** Max height for the transcript area before scrolling (CSS value) */
   maxHeight?: string;
+  /** Map of segment IDs to translation error messages */
+  translationErrors?: Map<string, string>;
+  /** Callback to retry translation for a specific segment */
+  onRetryTranslation?: (segmentId: string) => void;
 }
 
 export interface TranscriptLayoutHandle {
@@ -98,7 +102,7 @@ function countFinalSegments(segments: TranscriptSegment[]): number {
 
 export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLayoutProps>(
   function TranscriptLayout(
-    { segments, sourceLanguage, targetLanguage, isRecording = false, maxHeight = "600px" },
+    { segments, sourceLanguage, targetLanguage, isRecording = false, maxHeight = "600px", translationErrors, onRetryTranslation },
     ref
   ) {
     // Scroll state
@@ -349,7 +353,24 @@ export const TranscriptLayout = forwardRef<TranscriptLayoutHandle, TranscriptLay
                             </span>
                           </div>
                           <p className="text-sm leading-relaxed pl-1">
-                            {segment.translatedText ? (
+                            {translationErrors?.has(segment.id) ? (
+                              <span className="flex items-start gap-2 text-red-600 dark:text-red-400">
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                                <span className="flex flex-col gap-1.5">
+                                  <span className="text-xs">{translationErrors.get(segment.id)}</span>
+                                  {onRetryTranslation && segment.isFinal && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onRetryTranslation(segment.id)}
+                                      className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 underline underline-offset-2 w-fit"
+                                    >
+                                      <RefreshCw className="h-3 w-3" />
+                                      Retry translation
+                                    </button>
+                                  )}
+                                </span>
+                              </span>
+                            ) : segment.translatedText ? (
                               <span className={`transition-all duration-300 ${
                                 isInterim ? "italic text-muted-foreground" : "text-foreground"
                               }`}>{segment.translatedText}</span>

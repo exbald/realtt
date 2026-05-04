@@ -8,6 +8,40 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+/** Escape special Markdown characters in plain text content */
+function escapeMarkdown(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\*/g, "\\*")
+    .replace(/_/g, "\\_")
+    .replace(/`/g, "\\`")
+    .replace(/#/g, "\\#")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]");
+}
+
+/** Format seconds into a human-readable duration string */
+function formatDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${mins}m ${secs}s`;
+  }
+  return `${mins}m ${secs}s`;
+}
+
+/** Format seconds into M:SS or H:MM:SS timestamp */
+function formatTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+}
+
 // GET /api/sessions/[id]/export - Export session transcript as Markdown
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
@@ -33,40 +67,43 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    // Get transcript segments
-    const segments = await db
+    // Get transcript segments (only final segments for export)
+    const allSegments = await db
       .select()
       .from(transcriptSegment)
       .where(eq(transcriptSegment.sessionId, id))
       .orderBy(transcriptSegment.createdAt);
 
+    // Only export final segments
+    const segments = allSegments.filter((seg) => seg.isFinal);
+
     // Build Markdown content
     const date = sess.createdAt.toISOString().split("T")[0];
-    const durationMin = Math.floor((sess.durationSeconds ?? 0) / 60);
-    const durationSec = (sess.durationSeconds ?? 0) % 60;
-    const durationStr = `${durationMin}m ${durationSec}s`;
+    const durationStr = formatDuration(sess.durationSeconds ?? 0);
 
-    let markdown = `# ${sess.title}\n\n`;
+    let markdown = `# ${escapeMarkdown(sess.title)}\n\n`;
     markdown += `## Metadata\n\n`;
-    markdown += `- **Date:** ${date}\n`;
-    markdown += `- **Duration:** ${durationStr}\n`;
-    markdown += `- **Source Language:** ${sess.sourceLanguage ?? "auto-detected"}\n`;
-    markdown += `- **Target Language:** ${sess.targetLanguage}\n`;
-    markdown += `- **Speakers:** ${sess.speakerCount ?? 0}\n\n`;
+    markdown += `| Field | Value |\n`;
+    markdown += `|-------|-------|\n`;
+    markdown += `| **Date** | ${date} |\n`;
+    markdown += `| **Duration** | ${durationStr} |\n`;
+    markdown += `| **Source Language** | ${escapeMarkdown(sess.sourceLanguage ?? "auto-detected")} |\n`;
+    markdown += `| **Target Language** | ${escapeMarkdown(sess.targetLanguage)} |\n`;
+    markdown += `| **Speakers** | ${sess.speakerCount ?? 0} |\n`;
+    markdown += `| **Segments** | ${segments.length} |\n\n`;
     markdown += `## Transcript\n\n`;
 
     if (segments.length === 0) {
       markdown += `*No transcript segments recorded.*\n`;
     } else {
       for (const seg of segments) {
-        const startStr = seg.startTime != null ? formatTime(seg.startTime) : "??:??";
-        const endStr = seg.endTime != null ? formatTime(seg.endTime) : "??:??";
-        markdown += `**${seg.speakerLabel}** [${startStr} - ${endStr}]:\n`;
-        markdown += `> ${seg.originalText}\n`;
+        const startStr = seg.startTime != null ? formatTime(seg.startTime) : "--:--";
+        const endStr = seg.endTime != null ? formatTime(seg.endTime) : "--:--";
+        markdown += `### ${escapeMarkdown(seg.speakerLabel)} [${startStr} – ${endStr}]\n\n`;
+        markdown += `${escapeMarkdown(seg.originalText)}\n\n`;
         if (seg.translatedText) {
-          markdown += `> *${seg.translatedText}*\n`;
+          markdown += `*${escapeMarkdown(seg.translatedText)}*\n\n`;
         }
-        markdown += `\n`;
       }
     }
 
@@ -88,10 +125,4 @@ export async function GET(req: NextRequest, context: RouteContext) {
     console.error("Error exporting session:", error);
     return NextResponse.json({ error: "Failed to export session" }, { status: 500 });
   }
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
